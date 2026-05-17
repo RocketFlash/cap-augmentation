@@ -316,6 +316,12 @@ class CapAug:
         self.normalized_range = bool(normilized_range)
         self.normilized_range = self.normalized_range
         self.probability_map = probability_map
+        # Lazily filled on first call; reused across paste batches. Stores
+        # (flat_normalised_probs, height, width). probability_map is
+        # captured by reference, so mutating it in place after constructing
+        # CapAug will NOT invalidate this cache — replace the array, don't
+        # mutate it.
+        self._normalized_probability_map: tuple[np.ndarray, int, int] | None = None
         self.mean_h_norm = mean_h_norm
         self.histogram_matching = histogram_matching
         self.hm_offset = hm_offset
@@ -361,13 +367,7 @@ class CapAug:
         self._validate_pixel_mode_ranges()
 
         if self.probability_map is not None:
-            probability_map = np.asarray(self.probability_map, dtype=float)
-            p_h, p_w = probability_map.shape
-            prob_map_1d = probability_map.reshape(-1)
-            prob_sum = prob_map_1d.sum()
-            if prob_sum <= 0:
-                raise ValueError("probability_map must contain a positive sum")
-            prob_map_1d = prob_map_1d / prob_sum
+            prob_map_1d, p_h, p_w = self._get_normalized_probability_map()
             select_indexes = self._rng.choice(
                 np.arange(prob_map_1d.size), size=n_objects, p=prob_map_1d
             )
@@ -428,6 +428,28 @@ class CapAug:
             )
 
         return self.generate_objects_coord(image, points, heights, scales)
+
+    def _get_normalized_probability_map(self) -> tuple[np.ndarray, int, int]:
+        """Return (flat-normalised probabilities, height, width).
+
+        Cached on first call: the input map's sum and divide are O(p_h*p_w),
+        not free on a 1000x1000 distribution sampled per training step.
+        """
+        if self._normalized_probability_map is not None:
+            return self._normalized_probability_map
+
+        probability_map = np.asarray(self.probability_map, dtype=float)
+        if probability_map.ndim != 2:
+            raise ValueError(
+                f"probability_map must be 2D; got shape {probability_map.shape}"
+            )
+        p_h, p_w = probability_map.shape
+        prob_sum = probability_map.sum()
+        if prob_sum <= 0:
+            raise ValueError("probability_map must contain a positive sum")
+        prob_map_1d = (probability_map.reshape(-1) / prob_sum).astype(float)
+        self._normalized_probability_map = (prob_map_1d, p_h, p_w)
+        return self._normalized_probability_map
 
     def _validate_pixel_mode_ranges(self):
         """In pixel mode, ranges feed np.random.randint, which silently

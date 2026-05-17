@@ -411,6 +411,44 @@ def test_alpha_padded_source_yields_tight_bbox(tmp_path, destination_image):
     assert semantic_mask.sum() == 100  # exactly the 10x10 visible region
 
 
+def test_probability_map_normalization_is_cached(make_source_image, destination_image):
+    """Regression: probability_map was re-summed and re-divided on every
+    aug() call. For a 1000x1000 map that's ~1 MB of busywork per training
+    step. Verify the normalised flat array is computed once and reused.
+    """
+    source = make_source_image()
+    probability_map = np.zeros((50, 50), dtype=float)
+    probability_map[40, 25] = 1.0
+    aug = CapAug(
+        [source],
+        probability_map=probability_map,
+        n_objects_range=[1, 1],
+        h_range=[0.2, 0.2],
+        random_h_flip=False,
+    )
+
+    aug(destination_image)
+    cached_first = aug._normalized_probability_map
+    assert cached_first is not None
+
+    aug(destination_image)
+    cached_second = aug._normalized_probability_map
+    # `is`: must be the exact same tuple, not a freshly recomputed one.
+    assert cached_second is cached_first
+
+
+def test_probability_map_rejects_non_2d_input(make_source_image, destination_image):
+    source = make_source_image()
+    aug = CapAug(
+        [source],
+        probability_map=np.zeros((3, 3, 3)),
+        n_objects_range=[1, 1],
+        h_range=[0.2, 0.2],
+    )
+    with pytest.raises(ValueError, match="must be 2D"):
+        aug(destination_image)
+
+
 def test_source_image_cache_avoids_repeated_disk_reads(
     monkeypatch, make_source_image, destination_image
 ):
