@@ -7,13 +7,35 @@ version with the leading `v` stripped. Keep-a-Changelog style headers
 like `## [0.3.0] - 2026-05-17` will silently produce empty notes.
 -->
 
+## 0.4.1
+
+### New features
+- `max_overlap` parameter on `CapAug`: skip pastes whose tight bbox
+  exceeds the given IoU with any already-accepted bbox. Useful for
+  dense placement where overlapping pastes would corrupt detection
+  ground truth. Default `None` keeps the prior unrestricted behavior.
+
+### Tests & CI
+- Promoted Albumentations and Torchvision `DeprecationWarning` and
+  `PendingDeprecationWarning` to errors in `pyproject.toml`
+  `filterwarnings`. Future upstream deprecations will fail the suite
+  immediately rather than slipping through.
+
+### Docs
+- Corrected the 0.4.0 `CapAlbumentations.always_apply` note: the
+  field was removed by Albumentations **2.0.0**, not a hypothetical
+  3.x. We had already required `>=2.0.8`, so the wrapper carried the
+  alias longer than the underlying library supported it.
+
 ## 0.4.0
 
 ### Breaking changes
 - `CapAlbumentations.always_apply` was removed. The kwarg had been a
-  deprecated alias for `p=1.0` since 0.2.x; Albumentations 3.x removed
-  the field from its own API too. Passing `always_apply=...` now raises
-  a `TypeError` with a migration hint pointing at `p=1.0`.
+  deprecated alias for `p=1.0` since 0.2.x; Albumentations itself
+  removed the field in **2.0.0** (we already require `>=2.0.8`), so
+  the wrapper was kept around longer than the underlying library
+  supported it. Passing `always_apply=...` now raises a `TypeError`
+  with a migration hint pointing at `p=1.0`.
 
 ### Bug fixes
 - `object_transforms` callables that return a 4-channel image now raise

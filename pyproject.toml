@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cap-augmentation"
-version = "0.4.0"
+version = "0.4.1"
 description = "Cut-and-paste augmentation for detection and segmentation datasets"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -120,6 +120,17 @@ addopts = "-p no:capture"
 # `.` lets `from dataset_tools.* import ...` resolve in tests (the package
 # is intentionally repo-only and not under src/). Don't drop it.
 pythonpath = ["src", "."]
+# Promote deprecation warnings from our optional integrations to errors so
+# their next major versions can't sneak past us silently. The wrapper
+# tests will fail loudly the moment Albumentations or Torchvision change
+# an API we depend on, giving us an early signal to update the wrapper
+# rather than finding out from a user bug report.
+filterwarnings = [
+    "error::DeprecationWarning:albumentations",
+    "error::PendingDeprecationWarning:albumentations",
+    "error::DeprecationWarning:torchvision",
+    "error::PendingDeprecationWarning:torchvision",
+]
 
 [tool.coverage.run]
 branch = true

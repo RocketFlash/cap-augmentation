@@ -16,8 +16,8 @@ class CapAlbumentations(A.DualTransform):
     concurrent threads.
 
     Pass ``p`` to control how often the augmentation fires. The legacy
-    ``always_apply`` keyword (removed in Albumentations 3.x) was dropped
-    in cap-augmentation 0.4.0 — use ``p=1.0`` instead.
+    ``always_apply`` keyword (removed in Albumentations 2.0.0) was
+    dropped in cap-augmentation 0.4.0 — use ``p=1.0`` instead.
     """
 
     def __init__(self, p=0.5, **kwargs):
@@ -25,7 +25,8 @@ class CapAlbumentations(A.DualTransform):
         if "always_apply" in kwargs:
             raise TypeError(
                 "always_apply was removed in cap-augmentation 0.4.0 (and in "
-                "Albumentations 3.x). Use p=1.0 to always apply the transform."
+                "Albumentations 2.0.0). Use p=1.0 to always apply the "
+                "transform."
             )
         if kwargs.get("coords_format", "xyxy") != "xyxy":
             raise ValueError("CapAlbumentations requires CapAug coords_format='xyxy'")
