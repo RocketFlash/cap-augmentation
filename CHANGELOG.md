@@ -7,6 +7,33 @@ version with the leading `v` stripped. Keep-a-Changelog style headers
 like `## [0.3.0] - 2026-05-17` will silently produce empty notes.
 -->
 
+## 0.4.0
+
+### Breaking changes
+- `CapAlbumentations.always_apply` was removed. The kwarg had been a
+  deprecated alias for `p=1.0` since 0.2.x; Albumentations 3.x removed
+  the field from its own API too. Passing `always_apply=...` now raises
+  a `TypeError` with a migration hint pointing at `p=1.0`.
+
+### Bug fixes
+- `object_transforms` callables that return a 4-channel image now raise
+  a clear `ValueError` instead of silently broadcasting a (H, W) alpha
+  against a (H, W, 4) source in the composite. The contract (alpha
+  travels via the separate `mask` argument, not the image one) is now
+  explicit in the error message.
+
+### Performance
+- `probability_map` is now normalised once and cached on the `CapAug`
+  instance instead of being re-summed and re-divided on every call. For
+  a 1000×1000 map that's ~1 MB of per-call busywork avoided in tight
+  training loops. The cached value is invalidated only by constructing
+  a new `CapAug` — replace the array, don't mutate it in place.
+
+### Validation
+- `probability_map` inputs with `ndim != 2` now raise a clear
+  `ValueError` instead of failing downstream in `np.random.choice` with
+  an opaque shape mismatch.
+
 ## 0.3.1
 
 ### Tests & CI
