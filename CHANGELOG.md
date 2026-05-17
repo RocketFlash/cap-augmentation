@@ -1,5 +1,41 @@
 # Changelog
 
+<!--
+Header format: `## X.Y.Z` (plain version, no brackets or dates). The
+publish workflow extracts release notes by matching `## ` + the tag
+version with the leading `v` stripped. Keep-a-Changelog style headers
+like `## [0.3.0] - 2026-05-17` will silently produce empty notes.
+-->
+
+## 0.3.1
+
+### Tests & CI
+- Added end-to-end coverage for `image_format='rgb'`, the `s_range`
+  scale path (when `h_range` is None), and `CapAugMulticlass` composed
+  with `bev_transform` — three paths the audit flagged as untested.
+- Added `tests/test_notebooks.py`: parses each `examples/notebooks/*.ipynb`,
+  compiles every code cell (catches API-rename drift), and asserts cell
+  outputs are stripped per repo convention.
+- CI now runs on macOS-latest and Windows-latest (Python 3.12) in
+  addition to the Linux 3.10 / 3.11 / 3.12 / 3.13 matrix.
+- Coverage reporting via `pytest-cov` on the Linux/3.12 job, with the
+  `coverage.xml` artifact uploaded for inspection.
+
+### Packaging
+- Split `[all]` into runtime extras and a new `[dev]` extra. Previously
+  `pip install "cap-augmentation[all]"` leaked black/ruff/build into
+  user environments; `[all]` is now runtime-only, and contributors
+  install `pip install -e ".[test,dev]"` to get the CI toolchain.
+- `[test]` no longer carries black/ruff (moved to `[dev]`).
+
+### Docs
+- Documented the default BEV calibration YAML (source camera + FOV +
+  "placeholder, replace for production") inline in the YAML and in the
+  README's BEV section.
+- CONTRIBUTING.md gained a Releasing section and a coverage-reporting
+  command; pinned the CHANGELOG header format so `publish.yml`'s
+  release-notes extractor doesn't silently produce empty notes.
+
 ## 0.3.0
 
 ### Breaking changes

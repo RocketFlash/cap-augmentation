@@ -35,11 +35,20 @@ ruff check src tests dataset_tools
 
 Both run in CI and must pass for merge.
 
-Run the optional Torchvision integration tests:
+To also exercise the Torchvision wrappers locally, install them alongside
+`[test,dev]` and re-run the full suite (no need to target the wrapper
+test file specifically — `pytest` picks it up either way and the imports
+skip cleanly when torchvision isn't installed):
 
 ```bash
-python -m pip install -e ".[test,torchvision]"
-pytest tests/test_wrappers.py
+python -m pip install -e ".[test,dev,torchvision]"
+pytest
+```
+
+To see line + branch coverage like CI does:
+
+```bash
+pytest --cov --cov-report=term-missing
 ```
 
 Before opening a pull request, also check for whitespace errors:
@@ -53,3 +62,14 @@ git diff --check
 The `dataset_tools/` directory is intentionally kept as clone-only tooling. It is not
 installed as part of the `cap_augmentation` Python package, so run those scripts
 from the repository root after installing the `dataset` extra.
+
+## Releasing
+
+1. Make sure CHANGELOG.md has a `## X.Y.Z` heading (plain version, no
+   brackets or dates — the `publish.yml` release-notes extractor parses
+   `## ` + the version number after stripping the leading `v` from the
+   tag). Add the section before bumping `version` in `pyproject.toml`.
+2. `git tag -a vX.Y.Z -m "..."` on `main`, then `git push --tags`.
+3. The `publish.yml` workflow builds, OIDC-publishes to PyPI, and
+   creates (or updates) a GitHub Release with notes extracted from
+   CHANGELOG.md. Both steps are idempotent.
