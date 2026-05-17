@@ -125,8 +125,11 @@ camera_info = {
     "output_h": 1000,
 }
 # Path to intrinsic camera parameters YAML. If None, the packaged default
-# (src/cap_augmentation/bev/default_calibration.yaml) is used. Replace with
-# your own YAML when working with a different camera.
+# (src/cap_augmentation/bev/default_calibration.yaml) is used. That default
+# corresponds to a 1920x1080 AXIS surveillance camera (~46° horizontal FOV)
+# — it is a placeholder. Pass your own ROS-style camera_info YAML when
+# working with a different camera; mismatched intrinsics will shift the
+# BEV projection and skew the meters→pixels conversion.
 calib_yaml_path = None
 
 bev_transform = BEV(
