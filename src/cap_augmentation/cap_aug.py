@@ -11,6 +11,15 @@ import numpy as np
 SUPPORTED_COORD_FORMATS = {"xyxy", "xywh", "yolo"}
 
 
+class OpaqueSourceWarning(UserWarning):
+    """Emitted when a source image lacks a meaningful transparency mask.
+
+    The pasted "object" then covers the entire source rectangle, which is
+    rarely what the user wants. Filter or silence this warning if the
+    behavior is intentional (e.g. pasting fully opaque sprites).
+    """
+
+
 def _as_scalar(value):
     return float(np.asarray(value).reshape(-1)[0])
 
@@ -236,6 +245,7 @@ class CapAug:
             raise ValueError("cache_size must be None, 0, or a positive integer")
         self.cache_size = None if cache_size is None else int(cache_size)
         self._image_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+        self._warned_opaque: dict[str, bool] = {}
 
     def __call__(self, image):
         return self.generate_objects(image)
@@ -491,7 +501,9 @@ class CapAug:
         if image_src is None:
             raise FileNotFoundError(f"Could not read source image: {source_image_path}")
 
+        no_alpha_reason = None
         if image_src.ndim == 2:
+            no_alpha_reason = "grayscale"
             code = (
                 cv2.COLOR_GRAY2RGBA
                 if self.image_format == "rgb"
@@ -499,6 +511,7 @@ class CapAug:
             )
             image_src = cv2.cvtColor(image_src, code)
         elif image_src.shape[2] == 3:
+            no_alpha_reason = "no alpha channel"
             code = (
                 cv2.COLOR_BGR2RGBA if self.image_format == "rgb" else cv2.COLOR_BGR2BGRA
             )
@@ -507,6 +520,21 @@ class CapAug:
             image_src = cv2.cvtColor(image_src, cv2.COLOR_BGRA2RGBA)
         elif image_src.shape[2] != 4:
             raise ValueError(f"Unsupported image channel count: {image_src.shape[2]}")
+
+        if no_alpha_reason is None and image_src[:, :, 3].min() == 255:
+            no_alpha_reason = "fully opaque"
+
+        if no_alpha_reason is not None and not self._warned_opaque.get(
+            str(source_image_path)
+        ):
+            warnings.warn(
+                f"Source {source_image_path} has {no_alpha_reason}; pasting "
+                "the full image rectangle as an object. CapAug expects PNGs "
+                "with a transparency mask defining the visible object.",
+                OpaqueSourceWarning,
+                stacklevel=2,
+            )
+            self._warned_opaque[str(source_image_path)] = True
 
         if self.cache_size != 0:
             image_src.setflags(write=False)

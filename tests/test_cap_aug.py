@@ -1,3 +1,5 @@
+import warnings
+
 import albumentations as A
 import cv2
 import numpy as np
@@ -8,6 +10,7 @@ from cap_augmentation import (
     CapAug,
     CapAugMulticlass,
     ImageMaskTransform,
+    OpaqueSourceWarning,
     resize_keep_ar,
 )
 
@@ -192,10 +195,37 @@ def test_rgb_grayscale_source_loads_as_four_channels(tmp_path):
     cv2.imwrite(str(path), np.full((4, 4), 17, dtype=np.uint8))
     aug = CapAug([path], image_format="rgb")
 
-    selected = aug.select_image([path], 0)
+    with pytest.warns(OpaqueSourceWarning, match="grayscale"):
+        selected = aug.select_image([path], 0)
 
     assert selected.shape == (4, 4, 4)
     assert selected[0, 0].tolist() == [17, 17, 17, 255]
+
+
+def test_source_without_alpha_emits_warning_once(tmp_path):
+    path = tmp_path / "opaque.png"
+    cv2.imwrite(str(path), np.full((4, 4, 3), 99, dtype=np.uint8))
+    aug = CapAug([path])
+
+    with pytest.warns(OpaqueSourceWarning, match="no alpha channel"):
+        aug.select_image([path], 0)
+
+    # Repeated reads of the same source must not re-warn — noisy in training loops.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", OpaqueSourceWarning)
+        aug.select_image([path], 0)
+
+
+def test_fully_opaque_alpha_emits_warning(tmp_path):
+    path = tmp_path / "opaque_alpha.png"
+    rgba = np.zeros((4, 4, 4), dtype=np.uint8)
+    rgba[..., :3] = 50
+    rgba[..., 3] = 255  # alpha present in file, but every pixel fully opaque
+    cv2.imwrite(str(path), rgba)
+    aug = CapAug([path])
+
+    with pytest.warns(OpaqueSourceWarning, match="fully opaque"):
+        aug.select_image([path], 0)
 
 
 def test_shape_changing_object_transform_does_not_crash(

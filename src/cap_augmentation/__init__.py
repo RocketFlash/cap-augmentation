@@ -3,7 +3,7 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
-from .cap_aug import CapAug, CapAugMulticlass, resize_keep_ar
+from .cap_aug import CapAug, CapAugMulticlass, OpaqueSourceWarning, resize_keep_ar
 
 try:
     __version__ = _version("cap-augmentation")
@@ -16,6 +16,7 @@ __all__ = [
     "CapAlbumentations",
     "CapTorchvision",
     "ImageMaskTransform",
+    "OpaqueSourceWarning",
     "__version__",
     "resize_keep_ar",
 ]
