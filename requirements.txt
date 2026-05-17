@@ -1,9 +1,0 @@
-tqdm
-easydict
-opencv-python
-numpy
-matplotlib
-scipy
-pyyaml
-scikit-image
-albumentations

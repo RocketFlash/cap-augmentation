@@ -1,4 +1,5 @@
 data/*
+example_images/result*.png
 
 # Mac
 .DS_Store
