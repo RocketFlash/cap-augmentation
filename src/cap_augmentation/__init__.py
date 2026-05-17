@@ -1,6 +1,13 @@
 """Cut-and-paste augmentation utilities."""
 
+from importlib.metadata import PackageNotFoundError, version as _version
+
 from .cap_aug import CapAug, CapAugMulticlass, resize_keep_ar
+
+try:
+    __version__ = _version("cap-augmentation")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"
 
 __all__ = [
     "CapAug",
@@ -8,6 +15,7 @@ __all__ = [
     "CapAlbumentations",
     "CapTorchvision",
     "ImageMaskTransform",
+    "__version__",
     "resize_keep_ar",
 ]
 

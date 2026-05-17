@@ -43,3 +43,7 @@ jobs:
           path: dist/
       - name: Publish via trusted publishing
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Silently skip if the version is already on PyPI (idempotent re-tags
+          # won't fail the workflow).
+          skip-existing: true

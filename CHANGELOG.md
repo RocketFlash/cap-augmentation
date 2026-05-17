@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Expose `cap_augmentation.__version__` (read from installed package metadata via `importlib.metadata`).
+- Make `.github/workflows/publish.yml` idempotent by passing `skip-existing: true` to the PyPI publish action; re-tagging an already-published version no longer fails the workflow.
+
 ## 0.2.0
 
 ### Breaking changes
