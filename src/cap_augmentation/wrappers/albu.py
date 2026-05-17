@@ -1,7 +1,5 @@
 """Albumentations integration for CAP augmentation."""
 
-import warnings
-
 import albumentations as A
 import cv2
 import numpy as np
@@ -16,20 +14,23 @@ class CapAlbumentations(A.DualTransform):
     sequentially on the same transform instance. This wrapper stores that
     per-call state on the instance, so do not share one transform object across
     concurrent threads.
+
+    Pass ``p`` to control how often the augmentation fires. The legacy
+    ``always_apply`` keyword (removed in Albumentations 3.x) was dropped
+    in cap-augmentation 0.4.0 — use ``p=1.0`` instead.
     """
 
-    def __init__(self, p=0.5, always_apply=False, **kwargs):
+    def __init__(self, p=0.5, **kwargs):
         kwargs = dict(kwargs)
+        if "always_apply" in kwargs:
+            raise TypeError(
+                "always_apply was removed in cap-augmentation 0.4.0 (and in "
+                "Albumentations 3.x). Use p=1.0 to always apply the transform."
+            )
         if kwargs.get("coords_format", "xyxy") != "xyxy":
             raise ValueError("CapAlbumentations requires CapAug coords_format='xyxy'")
         kwargs["coords_format"] = "xyxy"
-        if always_apply:
-            warnings.warn(
-                "always_apply is deprecated; use p=1.0 instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        super().__init__(p=1.0 if always_apply else p)
+        super().__init__(p=p)
 
         self.cap_aug = CapAug(**kwargs)
         self.cap_image = None

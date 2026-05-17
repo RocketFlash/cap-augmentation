@@ -77,6 +77,23 @@ def test_torchvision_wrapper_preserves_tv_tensors(make_source_image):
     assert int(result_target["semantic_mask"].sum().item()) == 200
 
 
+def test_cap_albumentations_rejects_always_apply(make_source_image):
+    """The legacy `always_apply` kwarg was removed in 0.4.0 (Albumentations
+    3.x removed it too). Passing it must surface a TypeError up front
+    rather than silently being absorbed into **kwargs and lost.
+    """
+    source = make_source_image()
+    with pytest.raises(TypeError, match="always_apply"):
+        CapAlbumentations(
+            source_images=[source],
+            n_objects_range=[1, 1],
+            h_range=[20, 21],
+            x_range=[50, 51],
+            y_range=[80, 81],
+            always_apply=True,
+        )
+
+
 def test_torchvision_wrapper_drops_masks_when_target_has_no_masks_key(
     make_source_image,
 ):
