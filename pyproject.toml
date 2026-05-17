@@ -105,6 +105,7 @@ where = ["src"]
 include = ["cap_augmentation*"]
 
 [tool.setuptools.package-data]
+"cap_augmentation" = ["py.typed"]
 "cap_augmentation.bev" = ["default_calibration.yaml"]
 
 [tool.pytest.ini_options]

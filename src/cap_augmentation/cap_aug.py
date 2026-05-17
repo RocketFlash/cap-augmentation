@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 __author__ = "RocketFlash: https://github.com/RocketFlash"
 
 import random
 import warnings
 from collections import OrderedDict
+from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import Any, Callable, Union
 
 import cv2
 import numpy as np
+
+PathLike = Union[str, Path]
+ObjectTransform = Callable[..., Any]
+SeedLike = Union[int, np.integer, np.random.Generator]
 
 SUPPORTED_COORD_FORMATS = {"xyxy", "xywh", "yolo"}
 
@@ -66,7 +74,16 @@ class _RNGAdapter:
         return int(self._rng.integers(low, high + 1))
 
 
-def resize_keep_ar(image, height=500, scale=None):
+def resize_keep_ar(
+    image: np.ndarray,
+    height: int = 500,
+    scale: float | None = None,
+) -> np.ndarray:
+    """Resize ``image`` preserving aspect ratio.
+
+    Use ``scale`` to scale by a factor, or ``height`` to set the target
+    height (width is derived from the original aspect ratio).
+    """
     if scale is not None:
         return cv2.resize(image, None, fx=float(scale), fy=float(scale))
 
@@ -133,7 +150,12 @@ class CapAugMulticlass:
     class_idxs - class indexes
     """
 
-    def __init__(self, cap_augs, probabilities, class_idxs):
+    def __init__(
+        self,
+        cap_augs: Sequence[CapAug],
+        probabilities: Sequence[float],
+        class_idxs: Sequence[int],
+    ) -> None:
         self.cap_augs = cap_augs
         self.probabilities = probabilities
         self.class_idxs = class_idxs
@@ -145,10 +167,14 @@ class CapAugMulticlass:
                 "cap_augs, probabilities, and class_idxs must have equal length"
             )
 
-    def __call__(self, image):
+    def __call__(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[np.ndarray]]:
         return self.generate_objects(image)
 
-    def generate_objects(self, image):
+    def generate_objects(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[np.ndarray]]:
         result_image = image.copy()
         total_result_coords = []
         total_instance_masks = []
@@ -226,32 +252,32 @@ class CapAug:
 
     def __init__(
         self,
-        source_images,
-        bev_transform=None,
-        probability_map=None,
-        mean_h_norm=None,
-        n_objects_range=(1, 6),
-        h_range=None,
-        s_range=(0.5, 1.5),
-        x_range=(200, 500),
-        y_range=(100, 300),
-        z_range=(0, 0),
-        objects_idxs=None,
-        random_h_flip=True,
-        random_v_flip=False,
-        histogram_matching=False,
-        hm_offset=200,
-        image_format="bgr",
-        coords_format="xyxy",
-        normilized_range=False,
-        blending_coeff=0,
-        class_idx=None,
-        albu_transforms=None,
-        object_transforms=None,
-        normalized_range=None,
-        cache_size=None,
-        rng=None,
-    ):
+        source_images: Sequence[PathLike],
+        bev_transform: Any | None = None,
+        probability_map: np.ndarray | None = None,
+        mean_h_norm: float | None = None,
+        n_objects_range: tuple[int, int] = (1, 6),
+        h_range: tuple[float, float] | None = None,
+        s_range: tuple[float, float] = (0.5, 1.5),
+        x_range: tuple[float, float] = (200, 500),
+        y_range: tuple[float, float] = (100, 300),
+        z_range: tuple[float, float] = (0, 0),
+        objects_idxs: Iterable[int] | None = None,
+        random_h_flip: bool = True,
+        random_v_flip: bool = False,
+        histogram_matching: bool = False,
+        hm_offset: int = 200,
+        image_format: str = "bgr",
+        coords_format: str = "xyxy",
+        normilized_range: bool = False,
+        blending_coeff: float = 0,
+        class_idx: int | None = None,
+        albu_transforms: ObjectTransform | None = None,
+        object_transforms: ObjectTransform | None = None,
+        normalized_range: bool | None = None,
+        cache_size: int | None = None,
+        rng: SeedLike | None = None,
+    ) -> None:
         if coords_format not in SUPPORTED_COORD_FORMATS:
             raise ValueError(
                 f"coords_format must be one of {sorted(SUPPORTED_COORD_FORMATS)}"
@@ -321,10 +347,14 @@ class CapAug:
                 "rng must be None, an int seed, or a numpy.random.Generator"
             )
 
-    def __call__(self, image):
+    def __call__(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         return self.generate_objects(image)
 
-    def generate_objects(self, image):
+    def generate_objects(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         n_objects = self._rng.randint_inclusive(*self.n_objects_range)
         heights = None
         scales = None
