@@ -23,6 +23,8 @@ jobs:
           python -m pip install -e ".[test]"
       - name: Check formatting
         run: black --check src tests dataset_tools
+      - name: Lint
+        run: ruff check src tests dataset_tools
       - name: Run tests
         run: pytest -q
 

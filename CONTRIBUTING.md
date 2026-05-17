@@ -5,7 +5,11 @@
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
+# Upgrade the seeded build tools — `python -m venv` ships an old setuptools
+# that has known CVEs (pip-audit will flag it). The package itself builds
+# with setuptools>=68 (see pyproject.toml [build-system]); this just brings
+# the dev venv's seeded versions in line.
+python -m pip install --upgrade pip setuptools wheel
 python -m pip install -e ".[test]"
 ```
 
@@ -17,11 +21,14 @@ Run the full test suite:
 pytest
 ```
 
-Check formatting:
+Check formatting and lint:
 
 ```bash
 black --check src tests dataset_tools
+ruff check src tests dataset_tools
 ```
+
+Both run in CI and must pass for merge.
 
 Run the optional Torchvision integration tests:
 

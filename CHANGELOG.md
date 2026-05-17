@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.2
+
+### Bug fixes
+- `CapAug.paste_object` no longer crashes when an `object_transforms` callable
+  crops or resizes the input. Previously the source dimensions were captured
+  before the transform ran, so the post-transform mask was sliced with stale
+  ROI bounds and OpenCV failed with a size-mismatch assertion. The transform
+  is now applied first, and shape-changing transforms that return mismatched
+  image and mask sizes raise a clear `ValueError`.
+- Returned bounding boxes are now tight against the visible (alpha > 0) region
+  of the pasted object rather than the source canvas. PNGs with transparent
+  padding (e.g. a 20×20 file containing a 10×10 visible object) used to yield
+  a box covering the full canvas; the box now matches the pixels that
+  actually changed in the destination. Behaviour is unchanged for fully
+  opaque sources.
+- Returned mask is sliced to the same tight region as the new bbox, so
+  multiclass aggregation and instance-mask blits stay aligned.
+
+### Dev / CI
+- `CONTRIBUTING.md` now tells contributors to also upgrade `setuptools` and
+  `wheel` when bootstrapping the dev venv. `python -m venv` seeds a pinned
+  old setuptools that `pip-audit` flags for known CVEs; the project build
+  itself uses `setuptools>=68` (see `pyproject.toml [build-system]`) so this
+  only affects the dev environment, but it removes the noise.
+- Added `ruff` lint to the project and CI (`tool.ruff` config in
+  `pyproject.toml`, `ruff check` step in `.github/workflows/test.yml`,
+  `ruff>=0.6` in the `[test]` and `[all]` extras). Auto-fixed 21 findings:
+  removed 2 genuinely unused imports
+  (`dataset_tools/cityscapes/filter_dataset.py:Path`,
+  `dataset_tools/vinbig/generate_dataset.py:os`), modernised
+  `super(Cls, self).__init__` and `class Foo(object)`, sorted imports, and
+  dropped redundant `# coding: utf-8` declarations.
+
 ## 0.2.1
 
 - Expose `cap_augmentation.__version__` (read from installed package metadata via `importlib.metadata`).

@@ -1,4 +1,3 @@
-# coding: utf-8
 __author__ = "RocketFlash: https://github.com/RocketFlash"
 
 import cv2

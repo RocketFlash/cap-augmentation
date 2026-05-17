@@ -1,6 +1,7 @@
 """Cut-and-paste augmentation utilities."""
 
-from importlib.metadata import PackageNotFoundError, version as _version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
 
 from .cap_aug import CapAug, CapAugMulticlass, resize_keep_ar
 

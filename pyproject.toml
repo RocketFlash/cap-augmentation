@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cap-augmentation"
-version = "0.2.1"
+version = "0.2.2"
 description = "Cut-and-paste augmentation for detection and segmentation datasets"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -74,6 +74,7 @@ test = [
     "matplotlib",
     "pandas",
     "pytest>=8",
+    "ruff>=0.6",
     "scikit-image>=0.19",
     "scipy",
     "tqdm",
@@ -91,6 +92,7 @@ all = [
     "easydict",
     "matplotlib",
     "pandas",
+    "ruff>=0.6",
     "scikit-image>=0.19",
     "scipy",
     "torch>=2",
@@ -113,3 +115,28 @@ pythonpath = ["src", "."]
 [tool.black]
 target-version = ["py39"]
 include = '\.py$'
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+extend-exclude = ["examples"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes (unused imports, undefined names)
+    "W",   # pycodestyle warnings
+    "I",   # isort (import ordering)
+    "B",   # flake8-bugbear (likely bugs)
+    "UP",  # pyupgrade (modernization)
+]
+ignore = [
+    "E501",  # line too long — Black handles wrapping
+    "E741",  # ambiguous variable name — collides with conventional math/CV names
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Dataset scripts mix Python data definitions with imperative blocks at module
+# level; the upstream-author style differs from the library code and we don't
+# want to churn it in this refactor.
+"dataset_tools/**" = ["B007", "E402"]

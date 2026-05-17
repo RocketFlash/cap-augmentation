@@ -1,4 +1,3 @@
-# coding: utf-8
 __author__ = "RocketFlash: https://github.com/RocketFlash"
 
 import random
@@ -66,7 +65,7 @@ def _with_class_column(coords, class_idx):
     return coords
 
 
-class CapAugMulticlass(object):
+class CapAugMulticlass:
     """
     cap_augs - list of cap augmentations for each class
     probabilities - list of probabilities for each augmentation
@@ -116,7 +115,7 @@ class CapAugMulticlass(object):
         return result_image, total_result_coords, result_sem_mask, total_instance_masks
 
 
-class CapAug(object):
+class CapAug:
     """
     source_images - list of image paths
     bev_transform - bird's eye view transformation
@@ -509,7 +508,24 @@ class CapAug(object):
         if random_v_flip and random.uniform(0, 1) > 0.5:
             image_src = cv2.flip(image_src, 0)
 
-        src_h, src_w = image_src.shape[:2]
+        mask_src = image_src[:, :, 3]
+        rgb_img = image_src[:, :, :3]
+
+        # Apply object-level transforms before reading dimensions: a transform
+        # may crop or resize the image/mask, so size-derived ROI bounds must be
+        # computed from the post-transform shapes.
+        if self.object_transforms is not None:
+            rgb_img, mask_src = _apply_image_mask_transform(
+                self.object_transforms, rgb_img, mask_src
+            )
+            if rgb_img.shape[:2] != mask_src.shape[:2]:
+                raise ValueError(
+                    "object_transforms must return image and mask with the same "
+                    f"height/width; got image {rgb_img.shape[:2]} and mask "
+                    f"{mask_src.shape[:2]}"
+                )
+
+        src_h, src_w = mask_src.shape[:2]
         dst_h, dst_w = image_dst.shape[:2]
         x_offset = int(round(x_coord - src_w / 2))
         y_offset = int(round(y_coord - src_h))
@@ -521,14 +537,6 @@ class CapAug(object):
 
         y1_m, y2_m = y1 - y_offset, y2 - y_offset
         x1_m, x2_m = x1 - x_offset, x2 - x_offset
-
-        mask_src = image_src[:, :, 3]
-        rgb_img = image_src[:, :, :3]
-
-        if self.object_transforms is not None:
-            rgb_img, mask_src = _apply_image_mask_transform(
-                self.object_transforms, rgb_img, mask_src
-            )
 
         src_roi = rgb_img[y1_m:y2_m, x1_m:x2_m]
         dst_roi = image_dst[y1:y2, x1:x2]
@@ -546,4 +554,17 @@ class CapAug(object):
             out_img = cv2.add(img1_bg, img2_fg)
 
         image_dst[y1:y2, x1:x2] = out_img
-        return image_dst, [x1, y1, x2, y2], mask_roi
+
+        # Tighten the returned bbox to the visible (alpha>0) pixels of the
+        # pasted ROI translated into destination coords, so PNGs with
+        # transparent padding don't yield boxes covering empty canvas. The
+        # mask is sliced to the same tight region so callers can blit it
+        # into instance/semantic masks at the bbox coordinates.
+        ys, xs = np.where(mask_roi > 0)
+        if ys.size == 0:
+            return image_dst, [], mask_roi
+        y_min, y_max = int(ys.min()), int(ys.max()) + 1
+        x_min, x_max = int(xs.min()), int(xs.max()) + 1
+        tight_box = [x1 + x_min, y1 + y_min, x1 + x_max, y1 + y_max]
+        tight_mask = mask_roi[y_min:y_max, x_min:x_max]
+        return image_dst, tight_box, tight_mask
