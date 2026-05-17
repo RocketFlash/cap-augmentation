@@ -2,6 +2,7 @@ __author__ = "RocketFlash: https://github.com/RocketFlash"
 
 import random
 import warnings
+from collections import OrderedDict
 from pathlib import Path
 
 import cv2
@@ -146,6 +147,10 @@ class CapAug:
                         Must accept image=..., mask=... and return either
                         {'image': image, 'mask': mask} or (image, mask).
     albu_transforms - deprecated alias for object_transforms
+    cache_size - number of decoded source images to keep in memory. None (the
+                 default) caches every source. Set to 0 to disable caching
+                 and re-read from disk on every paste. Cached images are
+                 returned by reference; do not mutate them in place.
     """
 
     def __init__(
@@ -173,6 +178,7 @@ class CapAug:
         albu_transforms=None,
         object_transforms=None,
         normalized_range=None,
+        cache_size=None,
     ):
         if coords_format not in SUPPORTED_COORD_FORMATS:
             raise ValueError(
@@ -225,6 +231,11 @@ class CapAug:
             object_transforms if object_transforms is not None else albu_transforms
         )
         self.albu_transforms = self.object_transforms
+
+        if cache_size is not None and int(cache_size) < 0:
+            raise ValueError("cache_size must be None, 0, or a positive integer")
+        self.cache_size = None if cache_size is None else int(cache_size)
+        self._image_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
 
     def __call__(self, image):
         return self.generate_objects(image)
@@ -471,6 +482,11 @@ class CapAug:
 
     def select_image(self, source_images, object_idx):
         source_image_path = Path(source_images[object_idx])
+        cache_key = (str(source_image_path), self.image_format)
+        if self.cache_size != 0 and cache_key in self._image_cache:
+            self._image_cache.move_to_end(cache_key)
+            return self._image_cache[cache_key]
+
         image_src = cv2.imread(str(source_image_path), cv2.IMREAD_UNCHANGED)
         if image_src is None:
             raise FileNotFoundError(f"Could not read source image: {source_image_path}")
@@ -491,6 +507,13 @@ class CapAug:
             image_src = cv2.cvtColor(image_src, cv2.COLOR_BGRA2RGBA)
         elif image_src.shape[2] != 4:
             raise ValueError(f"Unsupported image channel count: {image_src.shape[2]}")
+
+        if self.cache_size != 0:
+            image_src.setflags(write=False)
+            self._image_cache[cache_key] = image_src
+            if self.cache_size is not None:
+                while len(self._image_cache) > self.cache_size:
+                    self._image_cache.popitem(last=False)
 
         return image_src
 

@@ -352,6 +352,79 @@ def test_alpha_padded_source_yields_tight_bbox(tmp_path, destination_image):
     assert semantic_mask.sum() == 100  # exactly the 10x10 visible region
 
 
+def test_source_image_cache_avoids_repeated_disk_reads(
+    monkeypatch, make_source_image, destination_image
+):
+    source = make_source_image()
+    aug = CapAug(
+        [source],
+        n_objects_range=[3, 3],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+    )
+
+    reads = []
+    real_imread = cv2.imread
+
+    def counting_imread(path, *args, **kwargs):
+        reads.append(path)
+        return real_imread(path, *args, **kwargs)
+
+    monkeypatch.setattr(cv2, "imread", counting_imread)
+    aug(destination_image)
+    aug(destination_image)
+
+    assert reads.count(str(source)) == 1
+
+
+def test_cache_size_zero_disables_caching(
+    monkeypatch, make_source_image, destination_image
+):
+    source = make_source_image()
+    aug = CapAug(
+        [source],
+        n_objects_range=[2, 2],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        cache_size=0,
+    )
+
+    reads = []
+    real_imread = cv2.imread
+
+    def counting_imread(path, *args, **kwargs):
+        reads.append(path)
+        return real_imread(path, *args, **kwargs)
+
+    monkeypatch.setattr(cv2, "imread", counting_imread)
+    aug(destination_image)
+
+    assert reads.count(str(source)) == 2
+
+
+def test_cache_evicts_least_recently_used(make_source_image, destination_image):
+    sources = [make_source_image(name=f"s{i}.png") for i in range(3)]
+    aug = CapAug(
+        sources,
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        cache_size=2,
+    )
+
+    for idx in [0, 1, 2, 1]:
+        aug.select_image(sources, idx)
+
+    assert (str(sources[0]), aug.image_format) not in aug._image_cache
+    assert {key[0] for key in aug._image_cache} == {str(sources[1]), str(sources[2])}
+
+
 def test_missing_source_image_raises(destination_image, tmp_path):
     aug = CapAug(
         [tmp_path / "missing.png"],
