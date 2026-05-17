@@ -455,6 +455,32 @@ def test_cache_evicts_least_recently_used(make_source_image, destination_image):
     assert {key[0] for key in aug._image_cache} == {str(sources[1]), str(sources[2])}
 
 
+def test_histogram_matching_changes_pasted_pixels(make_source_image, destination_image):
+    """Lock the histogram-matching behavior: when the source and destination
+    histograms differ, the pasted pixels should *not* be the raw source
+    colour. The old test only checked shape/class; this proves the matching
+    actually runs end-to-end.
+    """
+    source = make_source_image(color=(20, 20, 20))
+    destination_image[:] = 200  # bright BG forces histogram matching to shift src
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        histogram_matching=True,
+    )
+    result, *_ = aug(destination_image)
+
+    pasted = result[70, 50].tolist()
+    # The original source color was (20, 20, 20); after matching against a
+    # uniform 200 destination the values must shift away from 20.
+    assert pasted != [20, 20, 20]
+    assert max(pasted) > 100
+
+
 def test_pixel_mode_rejects_float_ranges(make_source_image, destination_image):
     """Regression: numpy.random.randint silently truncates floats, so a user
     who passes (0.5, 0.8) intending normalized coordinates would get all-zero

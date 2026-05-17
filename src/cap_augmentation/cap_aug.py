@@ -526,10 +526,15 @@ class CapAug:
             image_src[:, :, :3], image_ref, channel_axis=-1
         )
         matched = np.clip(matched, 0, 255).astype(image_src.dtype)
-        image_src = cv2.bitwise_and(matched, matched, mask=mask_src)
-        image_src = cv2.cvtColor(image_src, cv2.COLOR_BGR2BGRA)
-        image_src[:, :, 3] = mask_src
-        return image_src
+        # Reassemble RGBA: matched colour channels carry the histogram-
+        # matched values, alpha plane carries the original mask. The earlier
+        # cv2.bitwise_and+cvtColor dance produced the same result via a
+        # misleading COLOR_BGR2BGRA constant (which only appends an alpha
+        # plane regardless of channel order).
+        result = np.empty_like(image_src)
+        result[:, :, :3] = matched
+        result[:, :, 3] = mask_src
+        return result
 
     def select_image(self, source_images, object_idx):
         source_image_path = Path(source_images[object_idx])
