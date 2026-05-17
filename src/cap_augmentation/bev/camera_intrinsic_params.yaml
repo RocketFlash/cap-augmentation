@@ -1,0 +1,20 @@
+image_width: 1920
+image_height: 1080
+camera_name: AXIS_camera
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [1033.098361620072, 0, 967.0722494529203, 0, 1038.959670005778, 542.0435916485391, 0, 0, 1]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.2953779450864331, 0.05756299066135961, 9.015749353458375e-05, -0.003028320077967914, 0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [653.3981323242188, 0, 941.0233482258263, 0, 0, 944.3274536132812, 542.1169063225461, 0, 0, 0, 1, 0]

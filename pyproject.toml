@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cap-augmentation"
+version = "0.1.0"
+description = "Cut-and-paste augmentation for detection and segmentation datasets"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [
+    { name = "RocketFlash" }
+]
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+albumentations = [
+    "albumentations>=2.0.8,<3",
+]
+dataset = [
+    "easydict",
+    "matplotlib",
+    "pandas",
+    "scipy",
+    "tqdm",
+]
+histogram = [
+    "scikit-image>=0.19",
+]
+test = [
+    "albumentations>=2.0.8,<3",
+    "black>=24",
+    "easydict",
+    "matplotlib",
+    "pandas",
+    "pytest>=8",
+    "scikit-image>=0.19",
+    "scipy",
+    "tqdm",
+]
+torchvision = [
+    "torch>=2",
+    "torchvision>=0.17",
+]
+viz = [
+    "matplotlib",
+]
+all = [
+    "albumentations>=2.0.8,<3",
+    "black>=24",
+    "easydict",
+    "matplotlib",
+    "pandas",
+    "scikit-image>=0.19",
+    "scipy",
+    "torch>=2",
+    "torchvision>=0.17",
+    "tqdm",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cap_augmentation*"]
+
+[tool.setuptools.package-data]
+"cap_augmentation.bev" = ["camera_intrinsic_params.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:capture"
+pythonpath = ["src"]
+
+[tool.black]
+target-version = ["py39"]
+include = '\.py$'

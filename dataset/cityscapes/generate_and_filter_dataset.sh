@@ -1,6 +1,9 @@
 #!/bin/bash
+set -e
 
-if [ ! -z $1 ]; then   
+cd "$(dirname "$0")"
+
+if [ -n "${1:-}" ]; then
     python generate_dataset.py --notebook
     python filter_dataset.py --notebook
 else
