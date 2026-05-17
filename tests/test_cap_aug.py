@@ -596,6 +596,104 @@ class FakeBEV:
         return height
 
 
+def test_image_format_rgb_swaps_channels_end_to_end(tmp_path):
+    """End-to-end: with image_format='rgb', cv2 reads source PNGs as BGR
+    and the loader must swap to RGB before pasting. The pasted pixel
+    must therefore match the RGB-interpreted source colour.
+    """
+    # Write a 4-channel source. cv2.imwrite serialises BGRA, so the bytes
+    # on disk are (B=10, G=20, R=200, A=255).
+    src = np.zeros((20, 10, 4), dtype=np.uint8)
+    src[:, :, :3] = (10, 20, 200)
+    src[:, :, 3] = 255
+    src_path = tmp_path / "rgb_src.png"
+    cv2.imwrite(str(src_path), src)
+
+    dst = np.zeros((100, 100, 3), dtype=np.uint8)
+    aug = CapAug(
+        [src_path],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        image_format="rgb",
+    )
+    result, *_ = aug(dst)
+
+    # Under image_format='rgb' the loader swaps B↔R, so the in-memory
+    # pixel is (200, 20, 10) — the same triplet the user would write to
+    # an RGB-shaped destination buffer.
+    assert result[70, 50].tolist() == [200, 20, 10]
+
+
+def test_s_range_scales_source_image(make_source_image, destination_image):
+    """When h_range is None, CapAug picks a scale from s_range and resizes
+    the source by that factor. Source is 20x10; scale 2.0 → object footprint
+    is 40x20 px.
+    """
+    source = make_source_image()
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=None,
+        s_range=(2.0, 2.0),
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+    )
+    _, boxes, _, _ = aug(destination_image)
+
+    x1, y1, x2, y2 = boxes[0].tolist()
+    assert (x2 - x1, y2 - y1) == (20, 40)  # 10*2, 20*2
+
+
+def test_multiclass_with_bev_transform(destination_image, make_source_image):
+    """CapAugMulticlass should compose per-class augmenters that use
+    bev_transform. Regression net: previously this combination had no
+    coverage, despite being the headline 3D-aware feature.
+    """
+    near_source = make_source_image("ped.png", color=(10, 0, 0))
+    far_source = make_source_image("car.png", color=(0, 20, 0))
+
+    bev = FakeBEV()
+    pedestrians = CapAug(
+        [near_source],
+        bev_transform=bev,
+        objects_idxs=[0, 0],
+        random_h_flip=False,
+    )
+    cars = CapAug(
+        [far_source],
+        bev_transform=bev,
+        objects_idxs=[0, 0],
+        random_h_flip=False,
+    )
+
+    # Bypass random sampling by calling generate_objects_coord directly
+    # via a thin adapter exposed as __call__.
+    class FixedPlacement:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __call__(self, image):
+            points = np.array([[0, 10, 1], [0, 20, 3]], dtype=float)
+            heights = np.array([20, 20], dtype=float)
+            return self._inner.generate_objects_coord(image, points, heights, None)
+
+    multiclass = CapAugMulticlass(
+        [FixedPlacement(pedestrians), FixedPlacement(cars)],
+        probabilities=[1.0, 1.0],
+        class_idxs=[1, 2],
+    )
+    _, boxes, sem, instance_masks = multiclass(destination_image)
+
+    assert boxes.shape == (4, 5)
+    assert set(boxes[:, 4].astype(int).tolist()) == {1, 2}
+    assert set(np.unique(sem)) <= {0, 1, 2}
+    assert len(instance_masks) == 2
+
+
 def test_bev_generation_sorts_points_objects_and_z_offsets(
     destination_image, make_source_image
 ):
