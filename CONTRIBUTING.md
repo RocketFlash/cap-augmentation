@@ -20,7 +20,7 @@ pytest
 Check formatting:
 
 ```bash
-black --check src tests dataset
+black --check src tests dataset_tools
 ```
 
 Run the optional Torchvision integration tests:
@@ -38,6 +38,6 @@ git diff --check
 
 ## Dataset Scripts
 
-The `dataset/` directory is intentionally kept as clone-only tooling. It is not
+The `dataset_tools/` directory is intentionally kept as clone-only tooling. It is not
 installed as part of the `cap_augmentation` Python package, so run those scripts
 from the repository root after installing the `dataset` extra.

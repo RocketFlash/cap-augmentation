@@ -125,6 +125,12 @@ def generate_bboxes_distribution(
 
 if __name__ == "__main__":
 
+    if cfg.annotations_csv_path is None:
+        raise SystemExit(
+            "Set annotations_csv_path in dataset_tools/vinbig/config.py "
+            "before running this script."
+        )
+
     ANNOTATIONS_CSV_PATH = cfg.annotations_csv_path
     SAVE_DIR = cfg.save_dir / "analytics/"
 

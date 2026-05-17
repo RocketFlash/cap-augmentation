@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cap-augmentation"
-version = "0.1.0"
+version = "0.2.0"
 description = "Cut-and-paste augmentation for detection and segmentation datasets"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -69,12 +69,12 @@ where = ["src"]
 include = ["cap_augmentation*"]
 
 [tool.setuptools.package-data]
-"cap_augmentation.bev" = ["camera_intrinsic_params.yaml"]
+"cap_augmentation.bev" = ["default_calibration.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-p no:capture"
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 
 [tool.black]
 target-version = ["py39"]

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..cap_aug import CAP_AUG
+from ..cap_aug import CapAug
 
 
-class CAP_TorchVision:
+class CapTorchvision:
     """Apply CAP augmentation to a torchvision image and target dictionary.
 
     The wrapper expects absolute XYXY boxes. If the target uses
@@ -19,12 +19,12 @@ class CAP_TorchVision:
         kwargs = dict(kwargs)
         self.class_idx = kwargs.pop("class_idx", None)
         if kwargs.get("coords_format", "xyxy") != "xyxy":
-            raise ValueError("CAP_TorchVision requires CAP_AUG coords_format='xyxy'")
+            raise ValueError("CapTorchvision requires CapAug coords_format='xyxy'")
         kwargs["coords_format"] = "xyxy"
         kwargs.setdefault("image_format", "rgb")
 
         self.output_masks = output_masks
-        self.cap_aug = CAP_AUG(**kwargs)
+        self.cap_aug = CapAug(**kwargs)
 
     def __call__(self, image, target=None):
         deps = _load_torchvision()
@@ -110,7 +110,7 @@ def _load_torchvision():
         from torchvision.ops import box_convert
     except ImportError as exc:
         raise ImportError(
-            "CAP_TorchVision requires the optional torchvision extra. "
+            "CapTorchvision requires the optional torchvision extra. "
             'Install it with: pip install "cap-augmentation[torchvision]"'
         ) from exc
     return torch, tv_tensors, box_convert
@@ -187,7 +187,7 @@ def _is_channel_first(tensor):
 def _to_uint8_hwc(image):
     image = np.asarray(image)
     if image.ndim != 3 or image.shape[2] != 3:
-        raise ValueError("CAP_TorchVision expects HWC images with exactly 3 channels")
+        raise ValueError("CapTorchvision expects HWC images with exactly 3 channels")
     if np.issubdtype(image.dtype, np.floating):
         max_value = float(np.nanmax(image)) if image.size else 1.0
         scale = 255.0 if max_value <= 1.0 else 1.0

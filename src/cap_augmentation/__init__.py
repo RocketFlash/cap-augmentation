@@ -1,19 +1,19 @@
 """Cut-and-paste augmentation utilities."""
 
-from .cap_aug import CAP_AUG, CAP_AUG_Multiclass, resize_keep_ar
+from .cap_aug import CapAug, CapAugMulticlass, resize_keep_ar
 
 __all__ = [
-    "CAP_AUG",
-    "CAP_AUG_Multiclass",
-    "CAP_Albu",
-    "CAP_TorchVision",
+    "CapAug",
+    "CapAugMulticlass",
+    "CapAlbumentations",
+    "CapTorchvision",
     "ImageMaskTransform",
     "resize_keep_ar",
 ]
 
 
 def __getattr__(name):
-    if name in {"CAP_Albu", "CAP_TorchVision", "ImageMaskTransform"}:
+    if name in {"CapAlbumentations", "CapTorchvision", "ImageMaskTransform"}:
         from . import wrappers
 
         return getattr(wrappers, name)

@@ -1,24 +1,23 @@
 """Optional integrations with third-party augmentation libraries."""
 
-from .generic import ImageMaskTransform
+from .image_mask_transform import ImageMaskTransform
 
 __all__ = [
-    "CAP_Albu",
-    "CAP_Albumentations",
-    "CAP_TorchVision",
+    "CapAlbumentations",
+    "CapTorchvision",
     "ImageMaskTransform",
 ]
 
 
 def __getattr__(name):
-    if name in {"CAP_Albu", "CAP_Albumentations"}:
-        from .albumentations import CAP_Albu
+    if name == "CapAlbumentations":
+        from .albu import CapAlbumentations
 
-        return CAP_Albu
-    if name == "CAP_TorchVision":
-        from .torchvision import CAP_TorchVision
+        return CapAlbumentations
+    if name == "CapTorchvision":
+        from .tv import CapTorchvision
 
-        return CAP_TorchVision
+        return CapTorchvision
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

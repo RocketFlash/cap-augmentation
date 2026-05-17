@@ -1,11 +1,7 @@
 import numpy as np
 import pytest
 
-from cap_augmentation.wrappers import CAP_Albu, CAP_Albumentations, CAP_TorchVision
-
-
-def test_wrapper_exports_keep_albumentations_alias():
-    assert CAP_Albumentations is CAP_Albu
+from cap_augmentation.wrappers import CapAlbumentations, CapTorchvision  # noqa: F401
 
 
 def test_torchvision_wrapper_merges_tensor_targets(make_source_image):
@@ -21,7 +17,7 @@ def test_torchvision_wrapper_merges_tensor_targets(make_source_image):
         "labels": torch.tensor([9], dtype=torch.int64),
         "masks": masks,
     }
-    transform = CAP_TorchVision(
+    transform = CapTorchvision(
         source_images=[source],
         n_objects_range=[1, 1],
         h_range=[20, 21],
@@ -61,7 +57,7 @@ def test_torchvision_wrapper_preserves_tv_tensors(make_source_image):
         "labels": torch.tensor([2], dtype=torch.int64),
         "semantic_mask": torch.zeros((100, 100), dtype=torch.uint8),
     }
-    transform = CAP_TorchVision(
+    transform = CapTorchvision(
         source_images=[source],
         n_objects_range=[1, 1],
         h_range=[20, 21],
@@ -87,7 +83,7 @@ def test_torchvision_wrapper_handles_numpy_images(make_source_image):
 
     source = make_source_image(color=(200, 20, 10))
     image = np.zeros((100, 100, 3), dtype=np.uint8)
-    transform = CAP_TorchVision(
+    transform = CapTorchvision(
         source_images=[source],
         n_objects_range=[1, 1],
         h_range=[20, 21],

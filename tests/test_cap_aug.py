@@ -5,9 +5,9 @@ import pytest
 import albumentations as A
 
 from cap_augmentation import (
-    CAP_AUG,
-    CAP_AUG_Multiclass,
-    CAP_Albu,
+    CapAug,
+    CapAugMulticlass,
+    CapAlbumentations,
     ImageMaskTransform,
     resize_keep_ar,
 )
@@ -27,7 +27,7 @@ def test_pixel_generation_returns_boxes_masks_and_image(
     destination_image, make_source_image
 ):
     source = make_source_image()
-    aug = CAP_AUG(
+    aug = CapAug(
         [source],
         n_objects_range=[1, 1],
         h_range=[20, 21],
@@ -48,7 +48,7 @@ def test_pixel_generation_returns_boxes_masks_and_image(
 def test_coordinate_formats_and_empty_outputs(destination_image, make_source_image):
     source = make_source_image()
 
-    xywh_aug = CAP_AUG(
+    xywh_aug = CapAug(
         [source],
         n_objects_range=[1, 1],
         h_range=[20, 21],
@@ -60,7 +60,7 @@ def test_coordinate_formats_and_empty_outputs(destination_image, make_source_ima
     _, xywh_boxes, _, _ = xywh_aug(destination_image)
     assert xywh_boxes.tolist() == [[45, 60, 10, 20]]
 
-    yolo_aug = CAP_AUG(
+    yolo_aug = CapAug(
         [source],
         n_objects_range=[1, 1],
         h_range=[20, 21],
@@ -72,7 +72,7 @@ def test_coordinate_formats_and_empty_outputs(destination_image, make_source_ima
     _, yolo_boxes, _, _ = yolo_aug(destination_image)
     np.testing.assert_allclose(yolo_boxes, [[0.5, 0.7, 0.1, 0.2]])
 
-    offscreen_aug = CAP_AUG(
+    offscreen_aug = CapAug(
         [source],
         n_objects_range=[1, 1],
         h_range=[20, 21],
@@ -90,7 +90,7 @@ def test_coordinate_formats_and_empty_outputs(destination_image, make_source_ima
 def test_normalized_range_and_probability_map(destination_image, make_source_image):
     source = make_source_image()
 
-    normalized_aug = CAP_AUG(
+    normalized_aug = CapAug(
         [source],
         n_objects_range=[1, 1],
         h_range=[0.2, 0.2],
@@ -103,7 +103,7 @@ def test_normalized_range_and_probability_map(destination_image, make_source_ima
     assert normalized_boxes.tolist() == [[45, 60, 55, 80]]
 
     with pytest.warns(DeprecationWarning):
-        alias_aug = CAP_AUG(
+        alias_aug = CapAug(
             [source],
             n_objects_range=[1, 1],
             h_range=[0.2, 0.2],
@@ -116,7 +116,7 @@ def test_normalized_range_and_probability_map(destination_image, make_source_ima
     assert alias_boxes.tolist() == [[45, 60, 55, 80]]
 
     probability_map = np.array([[0, 0], [0, 10]], dtype=float)
-    probability_aug = CAP_AUG(
+    probability_aug = CapAug(
         [source],
         probability_map=probability_map,
         n_objects_range=[1, 1],
@@ -134,7 +134,7 @@ def test_class_idx_blending_histogram_and_object_transforms(
     destination_image[:] = 100
     transforms = A.Compose([A.InvertImg(p=1.0)])
 
-    aug = CAP_AUG(
+    aug = CapAug(
         [source],
         n_objects_range=[1, 1],
         h_range=[20, 21],
@@ -160,7 +160,7 @@ def test_object_transforms_accept_tuple_adapters(destination_image, make_source_
     def brighten(image, mask):
         return np.full_like(image, 120), mask
 
-    aug = CAP_AUG(
+    aug = CapAug(
         [source],
         n_objects_range=[1, 1],
         h_range=[20, 21],
@@ -181,7 +181,7 @@ def test_rejects_duplicate_object_transform_aliases(make_source_image):
     source = make_source_image()
 
     with pytest.raises(ValueError):
-        CAP_AUG(
+        CapAug(
             [source],
             albu_transforms=lambda **kwargs: kwargs,
             object_transforms=lambda **kwargs: kwargs,
@@ -191,7 +191,7 @@ def test_rejects_duplicate_object_transform_aliases(make_source_image):
 def test_rgb_grayscale_source_loads_as_four_channels(tmp_path):
     path = tmp_path / "gray.png"
     cv2.imwrite(str(path), np.full((4, 4), 17, dtype=np.uint8))
-    aug = CAP_AUG([path], image_format="rgb")
+    aug = CapAug([path], image_format="rgb")
 
     selected = aug.select_image([path], 0)
 
@@ -200,7 +200,7 @@ def test_rgb_grayscale_source_loads_as_four_channels(tmp_path):
 
 
 def test_missing_source_image_raises(destination_image, tmp_path):
-    aug = CAP_AUG(
+    aug = CapAug(
         [tmp_path / "missing.png"],
         n_objects_range=[1, 1],
         h_range=[20, 21],
@@ -229,7 +229,7 @@ def test_bev_generation_sorts_points_objects_and_z_offsets(
 ):
     near_source = make_source_image("near.png", color=(10, 0, 0))
     far_source = make_source_image("far.png", color=(0, 20, 0))
-    aug = CAP_AUG(
+    aug = CapAug(
         [near_source, far_source],
         bev_transform=FakeBEV(),
         objects_idxs=[0, 1],
@@ -259,7 +259,7 @@ def test_multiclass_keeps_class_ids_when_some_augmenters_are_skipped(destination
             boxes = np.array([[self.x1, 1, self.x1 + 2, 3]])
             return image, boxes, semantic_mask, instance_mask
 
-    multiclass = CAP_AUG_Multiclass(
+    multiclass = CapAugMulticlass(
         [DummyAug(1), DummyAug(5)],
         probabilities=[0.0, 1.0],
         class_idxs=[2, 7],
@@ -282,7 +282,7 @@ def test_multiclass_aligns_boxes_with_existing_class_columns(destination_image):
             instance_mask = semantic_mask.copy()
             return image, self.boxes, semantic_mask, instance_mask
 
-    multiclass = CAP_AUG_Multiclass(
+    multiclass = CapAugMulticlass(
         [DummyAug([[1, 1, 3, 3, 99]]), DummyAug([[5, 1, 7, 3]])],
         probabilities=[1.0, 1.0],
         class_idxs=[2, 7],
@@ -297,7 +297,7 @@ def test_cap_albu_adds_image_mask_and_bboxes(destination_image, make_source_imag
     source = make_source_image()
     transform = A.Compose(
         [
-            CAP_Albu(
+            CapAlbumentations(
                 p=1.0,
                 source_images=[source],
                 n_objects_range=[1, 1],

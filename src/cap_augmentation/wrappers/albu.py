@@ -6,11 +6,11 @@ import albumentations as A
 import cv2
 import numpy as np
 
-from ..cap_aug import CAP_AUG, _align_columns
+from ..cap_aug import CapAug, _align_columns
 
 
-class CAP_Albu(A.DualTransform):
-    """Albumentations DualTransform wrapper around CAP_AUG.
+class CapAlbumentations(A.DualTransform):
+    """Albumentations DualTransform wrapper around CapAug.
 
     Albumentations calls ``apply``, ``apply_to_mask``, and ``apply_to_bboxes``
     sequentially on the same transform instance. This wrapper stores that
@@ -21,7 +21,7 @@ class CAP_Albu(A.DualTransform):
     def __init__(self, p=0.5, always_apply=False, **kwargs):
         kwargs = dict(kwargs)
         if kwargs.get("coords_format", "xyxy") != "xyxy":
-            raise ValueError("CAP_Albu requires CAP_AUG coords_format='xyxy'")
+            raise ValueError("CapAlbumentations requires CapAug coords_format='xyxy'")
         kwargs["coords_format"] = "xyxy"
         if always_apply:
             warnings.warn(
@@ -29,9 +29,9 @@ class CAP_Albu(A.DualTransform):
                 DeprecationWarning,
                 stacklevel=2,
             )
-        super(CAP_Albu, self).__init__(p=1.0 if always_apply else p)
+        super(CapAlbumentations, self).__init__(p=1.0 if always_apply else p)
 
-        self.cap_aug = CAP_AUG(**kwargs)
+        self.cap_aug = CapAug(**kwargs)
         self.cap_image = None
         self.cap_bboxes = np.empty((0, 4), dtype=float)
         self.cap_mask_sem = None
@@ -41,7 +41,7 @@ class CAP_Albu(A.DualTransform):
 
     @staticmethod
     def get_class_fullname():
-        return "CAP_Albu"
+        return "CapAlbumentations"
 
     def get_transform_init_args_names(self):
         return ()

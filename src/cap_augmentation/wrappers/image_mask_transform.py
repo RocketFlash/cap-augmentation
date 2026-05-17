@@ -2,7 +2,7 @@
 
 
 class ImageMaskTransform:
-    """Adapt a simple image/mask callable to CAP_AUG's object transform hook."""
+    """Adapt a simple image/mask callable to CapAug's object transform hook."""
 
     def __init__(self, transform):
         self.transform = transform

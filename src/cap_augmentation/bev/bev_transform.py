@@ -1,8 +1,21 @@
+from pathlib import Path
+
 import cv2
 import numpy as np
 import yaml
 
-from . import config as cfg
+_DEFAULT_CALIB_PATH = Path(__file__).resolve().parent / "default_calibration.yaml"
+_DEFAULT_PIX_PER_METER = 20
+_DEFAULT_CAMERA_INFO = {
+    "pitch": -2,
+    "yaw": 0,
+    "roll": 0,
+    "tx": 0,
+    "ty": 5,
+    "tz": 0,
+    "output_w": 1000,
+    "output_h": 1000,
+}
 
 
 def get_RX(pitch_angle):
@@ -47,9 +60,9 @@ def get_T(vtx, vty, vtz):
 
 def calculate_BEV_H(calib_params, camera_info=None, pix_per_meter=None):
     if camera_info is None:
-        camera_info = cfg.camera_info[cfg.camera_name]
+        camera_info = _DEFAULT_CAMERA_INFO
     if pix_per_meter is None:
-        pix_per_meter = cfg.pix_per_meter
+        pix_per_meter = _DEFAULT_PIX_PER_METER
     output_w = camera_info["output_w"]
     output_h = camera_info["output_h"]
 
@@ -92,7 +105,7 @@ def get_BEV_H(camera_info=None, calib_yaml_path=None, pix_per_meter=None):
     are intentionally ignored.
     """
     if calib_yaml_path is None:
-        calib_yaml_path = cfg.DEFAULT_CALIB_PATH
+        calib_yaml_path = _DEFAULT_CALIB_PATH
     calib_matrices = {}
 
     with open(calib_yaml_path) as file:
@@ -109,7 +122,7 @@ def get_BEV_H(camera_info=None, calib_yaml_path=None, pix_per_meter=None):
 class BEV(object):
     def __init__(self, camera_info=None, calib_yaml_path=None, pix_per_meter=None):
         if pix_per_meter is None:
-            pix_per_meter = cfg.pix_per_meter
+            pix_per_meter = _DEFAULT_PIX_PER_METER
         self.H, self.calib_matrices = get_BEV_H(
             camera_info,
             calib_yaml_path,
@@ -118,7 +131,7 @@ class BEV(object):
         self.inv_H = np.linalg.inv(self.H)
         self.pixels_per_meter = pix_per_meter
         if camera_info is None:
-            camera_info = cfg.camera_info[cfg.camera_name]
+            camera_info = _DEFAULT_CAMERA_INFO
         self.output_w = camera_info["output_w"]
         self.output_h = camera_info["output_h"]
 

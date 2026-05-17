@@ -66,7 +66,7 @@ def _with_class_column(coords, class_idx):
     return coords
 
 
-class CAP_AUG_Multiclass(object):
+class CapAugMulticlass(object):
     """
     cap_augs - list of cap augmentations for each class
     probabilities - list of probabilities for each augmentation
@@ -116,7 +116,7 @@ class CAP_AUG_Multiclass(object):
         return result_image, total_result_coords, result_sem_mask, total_instance_masks
 
 
-class CAP_AUG(object):
+class CapAug(object):
     """
     source_images - list of image paths
     bev_transform - bird's eye view transformation

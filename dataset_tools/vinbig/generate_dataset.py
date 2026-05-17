@@ -64,6 +64,12 @@ def generate_object_dataset_vinbig(
 
 if __name__ == "__main__":
 
+    if cfg.images_path is None or cfg.annotations_csv_path is None:
+        raise SystemExit(
+            "Set images_path and annotations_csv_path in dataset_tools/vinbig/config.py "
+            "before running this script."
+        )
+
     print("START DATASET GENERATION")
 
     IMAGES_PATH = cfg.images_path
