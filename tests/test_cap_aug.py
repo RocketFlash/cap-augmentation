@@ -411,6 +411,87 @@ def test_alpha_padded_source_yields_tight_bbox(tmp_path, destination_image):
     assert semantic_mask.sum() == 100  # exactly the 10x10 visible region
 
 
+def test_max_overlap_zero_skips_all_overlapping_pastes(
+    make_source_image, destination_image
+):
+    """With max_overlap=0, two pastes whose proposed bboxes overlap each
+    other at all must result in only one accepted paste — the first one
+    wins, subsequent overlapping pastes are rolled back.
+    """
+    source = make_source_image()  # 20x10 fully opaque
+    # All pastes land at the same (x_coord, y_coord), so every candidate
+    # after the first overlaps the accepted box at IoU == 1.
+    aug = CapAug(
+        [source],
+        n_objects_range=[5, 5],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        max_overlap=0.0,
+    )
+    _, boxes, semantic_mask, _ = aug(destination_image)
+
+    assert boxes.shape == (1, 4)
+    # The semantic mask must reflect a single 20×10 paste only.
+    assert int(semantic_mask.sum()) == 200
+
+
+def test_max_overlap_default_off_preserves_existing_behavior(
+    make_source_image, destination_image
+):
+    """Regression guard: with max_overlap=None (default), all candidates
+    paste even if they fully overlap. Locks the pre-0.5 behavior.
+    """
+    source = make_source_image()
+    aug = CapAug(
+        [source],
+        n_objects_range=[3, 3],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+    )
+    _, boxes, *_ = aug(destination_image)
+    assert boxes.shape[0] == 3
+
+
+def test_max_overlap_partial_allows_some_overlap(make_source_image, destination_image):
+    """max_overlap=0.5 must accept pastes that overlap at IoU < 0.5 and
+    reject pastes that overlap more. Two pastes at IoU ~= 0.33 (shared
+    bottom-half band) should both be accepted.
+    """
+    source = make_source_image()  # 20x10
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        max_overlap=0.5,
+    )
+    # Place two objects deterministically via generate_objects_coord. With
+    # 20×10 sources foot-anchored at (50, 80) and (50, 90), the second box
+    # is [45, 70, 55, 90] and the first is [45, 60, 55, 80]. They share a
+    # height-10 strip → IoU = 0 (touching but not overlapping). Stress the
+    # accept side first.
+    points = np.array([[50, 80], [50, 90]], dtype=float)
+    heights = np.array([20, 20], dtype=int)
+    _, boxes, *_ = aug.generate_objects_coord(
+        destination_image, points, heights, scales=None
+    )
+    assert boxes.shape[0] == 2
+
+
+def test_max_overlap_validates_range(make_source_image):
+    source = make_source_image()
+    with pytest.raises(ValueError, match=r"\[0, 1\]"):
+        CapAug([source], max_overlap=1.5)
+    with pytest.raises(ValueError, match=r"\[0, 1\]"):
+        CapAug([source], max_overlap=-0.1)
+
+
 def test_probability_map_normalization_is_cached(make_source_image, destination_image):
     """Regression: probability_map was re-summed and re-divided on every
     aug() call. For a 1000x1000 map that's ~1 MB of busywork per training

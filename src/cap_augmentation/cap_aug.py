@@ -128,6 +128,33 @@ def _align_columns(*arrays):
     return aligned
 
 
+def _max_box_iou(box, prior_boxes):
+    """Largest IoU between ``box`` and any of ``prior_boxes``.
+
+    ``box`` is a 4-tuple/list ``[x1, y1, x2, y2]``; ``prior_boxes`` is a
+    list of such tuples. Returns 0.0 when ``prior_boxes`` is empty so
+    callers can compare unconditionally.
+    """
+    if not prior_boxes:
+        return 0.0
+    box = np.asarray(box, dtype=float)
+    priors = np.asarray(prior_boxes, dtype=float)[:, :4]
+    ix1 = np.maximum(box[0], priors[:, 0])
+    iy1 = np.maximum(box[1], priors[:, 1])
+    ix2 = np.minimum(box[2], priors[:, 2])
+    iy2 = np.minimum(box[3], priors[:, 3])
+    iw = np.clip(ix2 - ix1, 0, None)
+    ih = np.clip(iy2 - iy1, 0, None)
+    inter = iw * ih
+    box_area = max(0.0, (box[2] - box[0]) * (box[3] - box[1]))
+    prior_areas = np.maximum(
+        0.0, (priors[:, 2] - priors[:, 0]) * (priors[:, 3] - priors[:, 1])
+    )
+    union = box_area + prior_areas - inter
+    iou = np.where(union > 0, inter / union, 0.0)
+    return float(iou.max())
+
+
 def _with_class_column(coords, class_idx):
     coords = np.asarray(coords)
     if coords.ndim != 2 or coords.shape[1] < 4:
@@ -248,6 +275,14 @@ class CapAug:
           directly. With ``rng=None`` (default) CapAug falls back to the
           stdlib ``random`` module and ``np.random`` — backward compatible
           for users who seed globally with ``random.seed`` / ``np.random.seed``.
+    max_overlap - if set, a value in [0, 1]. After each candidate paste,
+          compute IoU between the new tight bbox and all already-accepted
+          tight bboxes. If the largest IoU exceeds ``max_overlap`` the
+          candidate is rolled back and skipped, so the final result may
+          contain fewer objects than ``n_objects_range`` requested. Useful
+          for dense placement where overlapping pastes would corrupt
+          ground-truth boxes. Default ``None`` disables collision checking
+          (original behavior — overlapping pastes allowed).
     """
 
     def __init__(
@@ -277,6 +312,7 @@ class CapAug:
         normalized_range: bool | None = None,
         cache_size: int | None = None,
         rng: SeedLike | None = None,
+        max_overlap: float | None = None,
     ) -> None:
         if coords_format not in SUPPORTED_COORD_FORMATS:
             raise ValueError(
@@ -352,6 +388,12 @@ class CapAug:
             raise TypeError(
                 "rng must be None, an int seed, or a numpy.random.Generator"
             )
+
+        if max_overlap is not None:
+            max_overlap = float(max_overlap)
+            if not 0.0 <= max_overlap <= 1.0:
+                raise ValueError("max_overlap must be in [0, 1] or None")
+        self.max_overlap = max_overlap
 
     def __call__(
         self, image: np.ndarray
@@ -563,6 +605,28 @@ class CapAug:
             if self.histogram_matching:
                 image_src = self._match_histogram(image, image_src, x_coord, y_coord)
 
+            # Conservative snapshot of the ROI that paste_object MIGHT touch.
+            # The actual modified region is a subset (alpha trimming +
+            # optional object_transforms can only shrink it), but
+            # snapshotting a superset is enough to roll back on collision.
+            roi_snapshot = None
+            if self.max_overlap is not None and coords_all:
+                src_h0, src_w0 = image_src.shape[:2]
+                x_off0 = int(round(x_coord - src_w0 / 2))
+                y_off0 = int(round(y_coord - src_h0))
+                y1c = max(y_off0, 0)
+                y2c = min(y_off0 + src_h0, dst_h)
+                x1c = max(x_off0, 0)
+                x2c = min(x_off0 + src_w0, dst_w)
+                if x1c < x2c and y1c < y2c:
+                    roi_snapshot = (
+                        x1c,
+                        y1c,
+                        x2c,
+                        y2c,
+                        image_dst[y1c:y2c, x1c:x2c].copy(),
+                    )
+
             image_dst, coords, mask = self.paste_object(
                 image_dst,
                 image_src,
@@ -571,6 +635,17 @@ class CapAug:
                 self.random_h_flip,
                 self.random_v_flip,
             )
+
+            if (
+                coords
+                and self.max_overlap is not None
+                and _max_box_iou(coords, coords_all) > self.max_overlap
+            ):
+                if roi_snapshot is not None:
+                    x1c, y1c, x2c, y2c, snap = roi_snapshot
+                    image_dst[y1c:y2c, x1c:x2c] = snap
+                coords = []
+
             if coords:
                 coords_all.append(coords)
                 x1, y1, x2, y2 = coords
