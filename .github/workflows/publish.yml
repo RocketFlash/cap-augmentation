@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  # Manual trigger for testing the workflow against an existing tag (e.g. after
+  # editing publish.yml). Pick a tag from the dropdown; the publish step is
+  # idempotent (`skip-existing: true`) and the release step updates rather
+  # than fails when a release already exists.
+  workflow_dispatch:
 
 jobs:
   build:
@@ -47,3 +52,60 @@ jobs:
           # Silently skip if the version is already on PyPI (idempotent re-tags
           # won't fail the workflow).
           skip-existing: true
+
+  release:
+    name: Create GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # required to create the Release + upload artifacts
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          # Tag looks like "v0.2.4"; the CHANGELOG header is "## 0.2.4".
+          version="${GITHUB_REF_NAME#v}"
+          notes=$(awk -v ver="$version" '
+            /^## / {
+              if (in_section) exit
+              if ($2 == ver) { in_section = 1; next }
+            }
+            in_section { print }
+          ' CHANGELOG.md)
+          if [ -z "$notes" ]; then
+            echo "WARNING: no CHANGELOG.md entry found for $version"
+            notes="Release $GITHUB_REF_NAME. See CHANGELOG.md for details."
+          fi
+          {
+            echo "body<<RELEASE_NOTES_EOF"
+            echo "$notes"
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # Idempotent: if a release already exists for this tag (e.g. from a
+          # re-run), update it instead of failing. The wheel + sdist are
+          # uploaded as attachments either way.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --notes "${{ steps.notes.outputs.body }}" \
+              --latest
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --notes "${{ steps.notes.outputs.body }}" \
+              --latest \
+              dist/*
+          fi
