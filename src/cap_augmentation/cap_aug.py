@@ -24,6 +24,48 @@ def _as_scalar(value):
     return float(np.asarray(value).reshape(-1)[0])
 
 
+class _RNGAdapter:
+    """Single random-source abstraction for CapAug.
+
+    When ``rng`` is None, falls back to the stdlib ``random`` module and
+    the legacy ``np.random`` module — so users who seed via
+    ``random.seed`` and ``np.random.seed`` see no behavior change.
+
+    When ``rng`` is a ``numpy.random.Generator``, every draw (including
+    the ones currently going through stdlib ``random``) is routed through
+    it so a single seed reproduces all augmentation choices.
+    """
+
+    def __init__(self, rng=None):
+        self._rng = rng
+
+    def integers(self, low, high, size=None):  # high exclusive (numpy convention)
+        if self._rng is None:
+            return np.random.randint(low, high, size=size)
+        return self._rng.integers(low, high, size=size)
+
+    def uniform(self, low, high, size=None):
+        if self._rng is None:
+            return np.random.uniform(low, high, size=size)
+        return self._rng.uniform(low, high, size=size)
+
+    def choice(self, a, size, p=None):
+        if self._rng is None:
+            return np.random.choice(a, size=size, p=p)
+        return self._rng.choice(a, size=size, p=p)
+
+    def random(self):
+        if self._rng is None:
+            return random.uniform(0, 1)
+        return float(self._rng.random())
+
+    def randint_inclusive(self, low, high):
+        """random.randint() semantics: both endpoints inclusive."""
+        if self._rng is None:
+            return random.randint(low, high)
+        return int(self._rng.integers(low, high + 1))
+
+
 def resize_keep_ar(image, height=500, scale=None):
     if scale is not None:
         return cv2.resize(image, None, fx=float(scale), fy=float(scale))
@@ -169,6 +211,11 @@ class CapAug:
                  default) caches every source. Set to 0 to disable caching
                  and re-read from disk on every paste. Cached images are
                  returned by reference; do not mutate them in place.
+    rng - optional source of randomness. Pass an integer to seed a fresh
+          numpy Generator (recommended), or pass a ``numpy.random.Generator``
+          directly. With ``rng=None`` (default) CapAug falls back to the
+          stdlib ``random`` module and ``np.random`` — backward compatible
+          for users who seed globally with ``random.seed`` / ``np.random.seed``.
     """
 
     def __init__(
@@ -197,6 +244,7 @@ class CapAug:
         object_transforms=None,
         normalized_range=None,
         cache_size=None,
+        rng=None,
     ):
         if coords_format not in SUPPORTED_COORD_FORMATS:
             raise ValueError(
@@ -256,11 +304,22 @@ class CapAug:
         self._image_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._warned_opaque: dict[str, bool] = {}
 
+        if rng is None:
+            self._rng = _RNGAdapter(None)
+        elif isinstance(rng, (int, np.integer)):
+            self._rng = _RNGAdapter(np.random.default_rng(int(rng)))
+        elif isinstance(rng, np.random.Generator):
+            self._rng = _RNGAdapter(rng)
+        else:
+            raise TypeError(
+                "rng must be None, an int seed, or a numpy.random.Generator"
+            )
+
     def __call__(self, image):
         return self.generate_objects(image)
 
     def generate_objects(self, image):
-        n_objects = random.randint(*self.n_objects_range)
+        n_objects = self._rng.randint_inclusive(*self.n_objects_range)
         heights = None
         scales = None
         self._validate_pixel_mode_ranges()
@@ -273,8 +332,8 @@ class CapAug:
             if prob_sum <= 0:
                 raise ValueError("probability_map must contain a positive sum")
             prob_map_1d = prob_map_1d / prob_sum
-            select_indexes = np.random.choice(
-                np.arange(prob_map_1d.size), n_objects, p=prob_map_1d
+            select_indexes = self._rng.choice(
+                np.arange(prob_map_1d.size), size=n_objects, p=prob_map_1d
             )
             points = np.array(
                 [
@@ -285,50 +344,50 @@ class CapAug:
             )
 
             if self.mean_h_norm is not None:
-                heights = np.random.uniform(
+                heights = self._rng.uniform(
                     low=self.mean_h_norm * 0.98,
                     high=self.mean_h_norm * 1.02,
                     size=n_objects,
                 )
             elif self.h_range is not None:
-                heights = np.random.uniform(
+                heights = self._rng.uniform(
                     low=self.h_range[0], high=self.h_range[1], size=n_objects
                 )
         elif self.bev_transform is not None:
-            points = np.random.uniform(
+            points = self._rng.uniform(
                 low=[self.x_range[0], self.y_range[0], self.z_range[0]],
                 high=[self.x_range[1], self.y_range[1], self.z_range[1]],
                 size=(n_objects, 3),
             )
             if self.h_range is not None:
-                heights = np.random.uniform(
+                heights = self._rng.uniform(
                     low=self.h_range[0], high=self.h_range[1], size=n_objects
                 )
             else:
-                heights = np.random.uniform(low=0.5, high=1.5, size=n_objects)
+                heights = self._rng.uniform(low=0.5, high=1.5, size=n_objects)
         elif self.normalized_range:
-            points = np.random.uniform(
+            points = self._rng.uniform(
                 low=[self.x_range[0], self.y_range[0]],
                 high=[self.x_range[1], self.y_range[1]],
                 size=(n_objects, 2),
             )
             if self.h_range is not None:
-                heights = np.random.uniform(
+                heights = self._rng.uniform(
                     low=self.h_range[0], high=self.h_range[1], size=n_objects
                 )
         else:
-            points = np.random.randint(
+            points = self._rng.integers(
                 low=[self.x_range[0], self.y_range[0]],
                 high=[self.x_range[1], self.y_range[1]],
                 size=(n_objects, 2),
             )
             if self.h_range is not None:
-                heights = np.random.randint(
+                heights = self._rng.integers(
                     low=self.h_range[0], high=self.h_range[1], size=n_objects
                 )
 
         if heights is None:
-            scales = np.random.uniform(
+            scales = self._rng.uniform(
                 low=self.s_range[0], high=self.s_range[1], size=n_objects
             )
 
@@ -376,7 +435,7 @@ class CapAug:
         if self.objects_idxs is None:
             objects_idxs = np.array(
                 [
-                    random.randint(0, len(self.source_images) - 1)
+                    self._rng.randint_inclusive(0, len(self.source_images) - 1)
                     for _ in range(n_objects)
                 ]
             )
@@ -600,9 +659,9 @@ class CapAug:
         random_h_flip=True,
         random_v_flip=False,
     ):
-        if random_h_flip and random.uniform(0, 1) > 0.5:
+        if random_h_flip and self._rng.random() > 0.5:
             image_src = cv2.flip(image_src, 1)
-        if random_v_flip and random.uniform(0, 1) > 0.5:
+        if random_v_flip and self._rng.random() > 0.5:
             image_src = cv2.flip(image_src, 0)
 
         mask_src = image_src[:, :, 3]

@@ -1,3 +1,4 @@
+import random
 import warnings
 
 import albumentations as A
@@ -514,6 +515,60 @@ def test_pixel_mode_accepts_int_typed_floats(make_source_image, destination_imag
     )
     _, boxes, *_ = aug(destination_image)
     assert boxes.shape == (1, 4)
+
+
+def test_rng_seed_is_reproducible_without_global_seeding(
+    make_source_image, destination_image
+):
+    """Two CapAug instances seeded with the same int must produce
+    bit-identical results regardless of the global random/numpy state.
+    """
+    source = make_source_image()
+
+    def run_with_seed(seed):
+        # Deliberately scramble global state between calls.
+        random.seed(12345)
+        np.random.seed(67890)
+        aug = CapAug(
+            [source],
+            n_objects_range=[2, 4],
+            h_range=[15, 25],
+            x_range=[10, 90],
+            y_range=[40, 95],
+            rng=seed,
+        )
+        return aug(destination_image)
+
+    img_a, boxes_a, sem_a, _ = run_with_seed(42)
+    img_b, boxes_b, sem_b, _ = run_with_seed(42)
+    img_c, boxes_c, sem_c, _ = run_with_seed(7)
+
+    np.testing.assert_array_equal(img_a, img_b)
+    np.testing.assert_array_equal(boxes_a, boxes_b)
+    np.testing.assert_array_equal(sem_a, sem_b)
+
+    # Different seed → different result (sanity check).
+    assert not np.array_equal(boxes_a, boxes_c) or not np.array_equal(img_a, img_c)
+
+
+def test_rng_accepts_numpy_generator(make_source_image, destination_image):
+    source = make_source_image()
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        rng=np.random.default_rng(11),
+    )
+    _, boxes, *_ = aug(destination_image)
+    assert boxes.shape == (1, 4)
+
+
+def test_rng_rejects_invalid_type(make_source_image):
+    with pytest.raises(TypeError, match="numpy.random.Generator"):
+        CapAug([make_source_image()], rng="not-a-seed")
 
 
 def test_missing_source_image_raises(destination_image, tmp_path):
