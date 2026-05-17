@@ -6,11 +6,21 @@ on:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          # Cross-platform smoke check on a single Python version. Pure-Python
+          # + cv2 wheels exist for macOS/Windows; one job each is enough to
+          # catch path-handling and line-ending regressions without paying
+          # for a full matrix.
+          - os: macos-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
 
     steps:
       - uses: actions/checkout@v4
@@ -22,8 +32,12 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]"
       - name: Check formatting
+        # Black/ruff run on Linux only — formatting is OS-independent and
+        # rerunning on three platforms would just multiply noise.
+        if: matrix.os == 'ubuntu-latest'
         run: black --check src tests dataset_tools
       - name: Lint
+        if: matrix.os == 'ubuntu-latest'
         run: ruff check src tests dataset_tools
       - name: Run tests
         run: pytest -q
