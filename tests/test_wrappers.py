@@ -77,6 +77,38 @@ def test_torchvision_wrapper_preserves_tv_tensors(make_source_image):
     assert int(result_target["semantic_mask"].sum().item()) == 200
 
 
+def test_torchvision_wrapper_drops_masks_when_target_has_no_masks_key(
+    make_source_image,
+):
+    """Documented behavior: target with boxes but no `masks` key never
+    grows a `masks` entry, even with output_masks=True. Avoids silently
+    altering the target schema mid-pipeline.
+    """
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("torchvision")
+
+    source = make_source_image()
+    image = torch.zeros((3, 100, 100), dtype=torch.uint8)
+    target = {
+        "boxes": torch.tensor([[1, 1, 3, 3]], dtype=torch.float32),
+        "labels": torch.tensor([9], dtype=torch.int64),
+    }
+    transform = CapTorchvision(
+        source_images=[source],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        class_idx=4,
+        output_masks=True,
+    )
+
+    _, result_target = transform(image, target)
+
+    assert "masks" not in result_target
+
+
 def test_torchvision_wrapper_handles_numpy_images(make_source_image):
     pytest.importorskip("torch")
     pytest.importorskip("torchvision")
