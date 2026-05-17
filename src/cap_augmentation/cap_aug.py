@@ -5,16 +5,16 @@ __author__ = "RocketFlash: https://github.com/RocketFlash"
 import random
 import warnings
 from collections import OrderedDict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Union
+from typing import Any
 
 import cv2
 import numpy as np
 
-PathLike = Union[str, Path]
+PathLike = str | Path
 ObjectTransform = Callable[..., Any]
-SeedLike = Union[int, np.integer, np.random.Generator]
+SeedLike = int | np.integer | np.random.Generator
 
 SUPPORTED_COORD_FORMATS = {"xyxy", "xywh", "yolo"}
 
@@ -181,7 +181,7 @@ class CapAugMulticlass:
         result_sem_mask = np.zeros(image.shape[:2], dtype=np.uint8)
 
         for cap_aug, p, class_idx in zip(
-            self.cap_augs, self.probabilities, self.class_idxs
+            self.cap_augs, self.probabilities, self.class_idxs, strict=True
         ):
             if float(p) >= float(np.random.uniform(0, 1)):
                 result_image, result_coords, semantic_mask, instance_mask = cap_aug(

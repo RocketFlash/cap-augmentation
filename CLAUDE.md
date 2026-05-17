@@ -94,9 +94,11 @@ re-introduce them.
   wrapper. Preserve this pattern when adding wrappers.
 - **`black --check` is a CI gate** with `target-version = ["py39"]`. Format
   before committing: `black src tests dataset_tools`.
-- **Tests must pass on Python 3.9 / 3.11 / 3.12** — no walrus-in-comprehension
-  3.10+ syntax, no `match` statements, no `X | Y` type unions outside string
-  annotations (use `Optional[X]` / `Union[X, Y]` instead).
+- **Tests must pass on Python 3.10 / 3.11 / 3.12 / 3.13.** PEP 604 unions
+  (`X | Y`) and PEP 585 generics (`list[int]`) are fine at runtime; for files
+  that need them in annotations specifically, use `from __future__ import
+  annotations`. No 3.11+ syntax (`Self`, `*Ts`, exception groups) without a
+  follow-on bump.
 - **Notebook outputs are not committed.** If you re-run a notebook, strip
   outputs (`jupyter nbconvert --clear-output --inplace`) before committing.
 
