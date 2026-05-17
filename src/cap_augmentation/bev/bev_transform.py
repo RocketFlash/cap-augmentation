@@ -119,7 +119,7 @@ def get_BEV_H(camera_info=None, calib_yaml_path=None, pix_per_meter=None):
     return H, calib_matrices
 
 
-class BEV(object):
+class BEV:
     def __init__(self, camera_info=None, calib_yaml_path=None, pix_per_meter=None):
         if pix_per_meter is None:
             pix_per_meter = _DEFAULT_PIX_PER_METER

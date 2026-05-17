@@ -1,11 +1,10 @@
-# coding: utf-8
 __author__ = "RocketFlash: https://github.com/RocketFlash"
 
-from scipy.io import loadmat
-from shutil import copyfile, rmtree
-from pathlib import Path
-import os
 import argparse
+import os
+from shutil import copyfile, rmtree
+
+from scipy.io import loadmat
 from tqdm import tqdm
 
 try:

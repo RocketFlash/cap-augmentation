@@ -1,11 +1,11 @@
-# coding: utf-8
 __author__ = "RocketFlash: https://github.com/RocketFlash"
 
+import argparse
 import os
+from shutil import rmtree
+
 import cv2
 import numpy as np
-from shutil import rmtree
-import argparse
 from tqdm import tqdm
 
 try:

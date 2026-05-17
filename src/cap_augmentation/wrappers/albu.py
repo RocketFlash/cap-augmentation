@@ -29,7 +29,7 @@ class CapAlbumentations(A.DualTransform):
                 DeprecationWarning,
                 stacklevel=2,
             )
-        super(CapAlbumentations, self).__init__(p=1.0 if always_apply else p)
+        super().__init__(p=1.0 if always_apply else p)
 
         self.cap_aug = CapAug(**kwargs)
         self.cap_image = None

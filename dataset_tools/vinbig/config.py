@@ -1,5 +1,6 @@
-from easydict import EasyDict
 from pathlib import Path
+
+from easydict import EasyDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

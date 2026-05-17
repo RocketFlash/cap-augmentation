@@ -1,11 +1,11 @@
-# coding: utf-8
 __author__ = "RocketFlash: https://github.com/RocketFlash"
 
+from shutil import rmtree
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from shutil import rmtree
-import matplotlib.pyplot as plt
 
 try:
     from .config import data_generation as cfg
@@ -13,7 +13,7 @@ except ImportError:
     from config import data_generation as cfg
 
 
-class AverageMeter(object):
+class AverageMeter:
     """Computes and stores the average and current value"""
 
     def __init__(self):

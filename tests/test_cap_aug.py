@@ -1,13 +1,12 @@
+import albumentations as A
 import cv2
 import numpy as np
 import pytest
 
-import albumentations as A
-
 from cap_augmentation import (
+    CapAlbumentations,
     CapAug,
     CapAugMulticlass,
-    CapAlbumentations,
     ImageMaskTransform,
     resize_keep_ar,
 )
@@ -197,6 +196,97 @@ def test_rgb_grayscale_source_loads_as_four_channels(tmp_path):
 
     assert selected.shape == (4, 4, 4)
     assert selected[0, 0].tolist() == [17, 17, 17, 255]
+
+
+def test_shape_changing_object_transform_does_not_crash(
+    destination_image, make_source_image
+):
+    """Regression: object_transforms that crop/resize used to crash because
+    src_h/src_w were captured before the transform ran but the mask ROI was
+    sliced after it.
+    """
+    source = make_source_image()  # 20x10 alpha PNG
+
+    def crop_to_half(image, mask):
+        h, w = image.shape[:2]
+        return image[: h // 2, : w // 2], mask[: h // 2, : w // 2]
+
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        random_v_flip=False,
+        object_transforms=ImageMaskTransform(crop_to_half),
+    )
+
+    result, boxes, semantic_mask, _ = aug(destination_image)
+
+    assert boxes.shape == (1, 4)
+    box = boxes[0].tolist()
+    # Object cropped to 10x5; placement uses post-transform dims so the box
+    # is small and the result image was modified inside that box.
+    assert box[2] - box[0] == 5 and box[3] - box[1] == 10
+    assert semantic_mask.sum() == 50
+    assert not np.array_equal(result[box[1] : box[3], box[0] : box[2]], 0)
+
+
+def test_object_transform_with_mismatched_shapes_raises(
+    destination_image, make_source_image
+):
+    """A transform that returns image and mask with different H/W should fail
+    with a clear error instead of a downstream OpenCV assertion.
+    """
+    source = make_source_image()
+
+    def bad_transform(image, mask):
+        return image[:10, :5], mask  # image shrunk, mask untouched -> mismatch
+
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        object_transforms=ImageMaskTransform(bad_transform),
+    )
+
+    with pytest.raises(ValueError, match="same height/width"):
+        aug(destination_image)
+
+
+def test_alpha_padded_source_yields_tight_bbox(tmp_path, destination_image):
+    """Regression: a PNG with transparent padding around the visible object
+    used to return a bbox covering the full canvas. The bbox must match the
+    visible alpha region instead.
+    """
+    # 20x20 canvas with a 10x10 fully opaque region centered (5..15, 5..15).
+    src = np.zeros((20, 20, 4), dtype=np.uint8)
+    src[5:15, 5:15, :3] = (10, 20, 200)
+    src[5:15, 5:15, 3] = 255
+    src_path = tmp_path / "padded.png"
+    cv2.imwrite(str(src_path), src)
+
+    aug = CapAug(
+        [src_path],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],  # canvas height
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        random_v_flip=False,
+    )
+    _, boxes, semantic_mask, _ = aug(destination_image)
+
+    # Old (canvas-based) box would be [40, 60, 60, 80] (20x20 canvas).
+    # Tight (alpha-based) box must match where the visible 10x10 pixels
+    # actually landed in dst: canvas top-left = (40, 60), inner alpha
+    # offset (5, 5), so [45, 65, 55, 75].
+    assert boxes.tolist() == [[45, 65, 55, 75]]
+    assert semantic_mask.sum() == 100  # exactly the 10x10 visible region
 
 
 def test_missing_source_image_raises(destination_image, tmp_path):

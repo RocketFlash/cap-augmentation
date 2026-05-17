@@ -1,11 +1,10 @@
-# coding: utf-8
 __author__ = "RocketFlash: https://github.com/RocketFlash"
 
-import os
+from shutil import rmtree
+
 import cv2
 import pandas as pd
 from tqdm import tqdm
-from shutil import rmtree
 
 try:
     from .config import data_generation as cfg
