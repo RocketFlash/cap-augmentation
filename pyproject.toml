@@ -13,11 +13,45 @@ license-files = ["LICENSE"]
 authors = [
     { name = "RocketFlash" }
 ]
+keywords = [
+    "augmentation",
+    "data-augmentation",
+    "copy-paste",
+    "cut-and-paste",
+    "object-detection",
+    "instance-segmentation",
+    "semantic-segmentation",
+    "computer-vision",
+    "image-processing",
+    "bird-eye-view",
+    "bev",
+    "deep-learning",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "numpy",
     "opencv-python",
     "pyyaml",
 ]
+
+[project.urls]
+Homepage = "https://github.com/RocketFlash/cap-augmentation"
+Repository = "https://github.com/RocketFlash/cap-augmentation"
+Issues = "https://github.com/RocketFlash/cap-augmentation/issues"
+Changelog = "https://github.com/RocketFlash/cap-augmentation/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 albumentations = [
