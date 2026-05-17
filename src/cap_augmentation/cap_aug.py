@@ -542,18 +542,23 @@ class CapAug:
         dst_roi = image_dst[y1:y2, x1:x2]
         mask_roi = mask_src[y1_m:y2_m, x1_m:x2_m]
 
-        if self.blending_coeff > 0:
-            beta = 1.0 - self.blending_coeff
-            blended = cv2.addWeighted(src_roi, self.blending_coeff, dst_roi, beta, 0.0)
-            out_img = dst_roi.copy()
-            out_img[mask_roi > 0] = blended[mask_roi > 0]
-        else:
-            mask_inv = cv2.bitwise_not(mask_roi)
-            img1_bg = cv2.bitwise_and(dst_roi, dst_roi, mask=mask_inv)
-            img2_fg = cv2.bitwise_and(src_roi, src_roi, mask=mask_roi)
-            out_img = cv2.add(img1_bg, img2_fg)
+        # Soft-alpha composite. For binary masks (alpha ∈ {0, 255}), this
+        # produces the same pixels as the old bitwise path; for masks with
+        # intermediate alpha values (anti-aliased cutouts), edges blend
+        # instead of being hard-thresholded.
+        alpha = (mask_roi.astype(np.float32) / 255.0)[..., None]
+        src_f = src_roi.astype(np.float32)
+        dst_f = dst_roi.astype(np.float32)
 
-        image_dst[y1:y2, x1:x2] = out_img
+        if self.blending_coeff > 0:
+            # Ghost effect: inside the mask region, blend src with dst at
+            # `blending_coeff`. Soft alpha still controls the boundary.
+            src_f = src_f * float(self.blending_coeff) + dst_f * (
+                1.0 - float(self.blending_coeff)
+            )
+
+        out_img = src_f * alpha + dst_f * (1.0 - alpha)
+        image_dst[y1:y2, x1:x2] = np.clip(out_img, 0, 255).astype(np.uint8)
 
         # Tighten the returned bbox to the visible (alpha>0) pixels of the
         # pasted ROI translated into destination coords, so PNGs with

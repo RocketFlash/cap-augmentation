@@ -258,6 +258,69 @@ def test_object_transform_with_mismatched_shapes_raises(
         aug(destination_image)
 
 
+def test_soft_alpha_edges_blend_with_destination(tmp_path, destination_image):
+    """Regression: a source with anti-aliased edges (intermediate alpha) used
+    to be hard-thresholded by the bitwise composite. After the soft-alpha
+    fix, edge pixels must be a smooth blend of source and destination.
+    """
+    src = np.zeros((20, 20, 4), dtype=np.uint8)
+    src[:, :, :3] = (10, 20, 200)
+    # Linear alpha ramp 0..255 across the width — every column has a
+    # different mix of src and dst expected.
+    for x in range(20):
+        src[:, x, 3] = int(round(x * 255 / 19))
+    src_path = tmp_path / "soft.png"
+    cv2.imwrite(str(src_path), src)
+    destination_image[:] = 200
+
+    aug = CapAug(
+        [src_path],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        random_v_flip=False,
+    )
+    result, *_ = aug(destination_image)
+
+    # Sample the same row at three columns that map to alpha ≈ 0.25, 0.5, 0.75.
+    # Object spans dst x = 40..60 (centered at 50). Inside-src x = dst_x - 40.
+    row = result[70]
+    for dst_x, src_x in [(45, 5), (50, 10), (55, 15)]:
+        alpha = round(src_x * 255 / 19) / 255.0
+        expected = np.clip(
+            np.array((10, 20, 200), dtype=float) * alpha
+            + np.array((200, 200, 200), dtype=float) * (1.0 - alpha),
+            0,
+            255,
+        ).astype(np.uint8)
+        np.testing.assert_allclose(row[dst_x], expected, atol=1)
+
+
+def test_binary_alpha_compositing_is_unchanged(make_source_image, destination_image):
+    """Sanity: for fully opaque (binary alpha 255) sources, the soft-alpha
+    composite must produce the exact pixels the old bitwise composite did.
+    Locks the behavior the README documents.
+    """
+    source = make_source_image()  # 20x10 fully opaque (alpha=255)
+    destination_image[:] = 50
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+    )
+    result, *_ = aug(destination_image)
+
+    # Inside the box, pixels are exactly the source color.
+    assert result[70, 50].tolist() == [10, 20, 200]
+    # Outside the box, pixels are exactly the destination color.
+    assert result[0, 0].tolist() == [50, 50, 50]
+
+
 def test_alpha_padded_source_yields_tight_bbox(tmp_path, destination_image):
     """Regression: a PNG with transparent padding around the visible object
     used to return a bbox covering the full canvas. The bbox must match the
