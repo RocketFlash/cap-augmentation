@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cap-augmentation"
-version = "0.2.3"
+version = "0.3.0"
 description = "Cut-and-paste augmentation for detection and segmentation datasets"
 readme = "README.md"
 requires-python = ">=3.10"

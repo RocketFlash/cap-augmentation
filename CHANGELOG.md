@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.3.0
+
+### Breaking changes
+- Dropped Python 3.9 support; minimum is now Python 3.10 (3.9 reached EOL
+  in October 2025). CI matrix is now 3.10 / 3.11 / 3.12 / 3.13.
+- The default soft-alpha composite now honors intermediate alpha values
+  on source PNGs. For sources with anti-aliased edges (most real
+  cutouts), pasted objects blend smoothly into the destination instead
+  of being hard-thresholded by the previous bitwise composite. Outputs
+  are bit-identical for sources with binary alpha (alpha ∈ {0, 255}),
+  which is what `dataset_tools/cityscapes` produces.
+
+### New features
+- `CapAug(..., rng=42)` accepts an int seed or `numpy.random.Generator`
+  for local, reproducible randomness — no more seeding both `random.seed`
+  and `np.random.seed` globally. `rng=None` (default) preserves the
+  legacy global-state behavior.
+- `CapAug(..., cache_size=...)` caches decoded source PNGs. Default is
+  unbounded; set `0` to disable, or `N` for an LRU cap. Eliminates the
+  per-paste `cv2.imread` cost that dominated training-loop wall time.
+- Public type annotations on `CapAug`, `CapAugMulticlass`,
+  `resize_keep_ar`, `ImageMaskTransform`, and `__version__`. Ships
+  `py.typed` so mypy/pyright honor them.
+- New `OpaqueSourceWarning` (exported) fires once per source path when
+  CapAug detects a grayscale, 3-channel, or fully-opaque source — these
+  silently paste the full rectangle as an "object", which is almost
+  always a user error.
+
+### Bug fixes
+- `_align_columns` preserved float padding even when both inputs were
+  integer, silently upcasting box arrays. Padding now uses
+  `np.result_type(*inputs)` so homogeneous integer inputs stay integer.
+- Pixel-mode now rejects non-integer ranges with an explicit error
+  pointing at `normalized_range=True` or `bev_transform=BEV(...)`.
+  Previously `np.random.randint` silently truncated floats — passing
+  `(0.0, 1.0)` produced all-zero placements with no feedback.
+- `_match_histogram` no longer routes through a misleading
+  `cv2.COLOR_BGR2BGRA` constant + redundant `bitwise_and`; the RGBA
+  array is reassembled directly from numpy slices.
+
+### Docs
+- README gained sections on reproducibility (`rng=`), the source-image
+  cache, `blending_coeff` semantics (now a "ghost factor" over soft
+  alpha), and the `OpaqueSourceWarning` rationale.
+- `CapTorchvision` docstring now spells out the target merge rules
+  (when boxes / labels / masks / semantic_mask are appended vs. dropped
+  vs. created from scratch). Locked with a regression test.
+
 ## 0.2.3
 
 Documentation-only release.
