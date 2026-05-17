@@ -10,24 +10,36 @@ Repository contains easy to use Python implementation of "Cut and paste" augment
 
 ## Installation
 
-To install the package locally:
+The package is published on PyPI:
 
 ```bash
-pip install -e .
+pip install cap-augmentation
 ```
 
 Optional integrations are installed as extras:
 
 ```bash
-pip install -e ".[albumentations]"
-pip install -e ".[torchvision]"
-pip install -e ".[histogram,viz,dataset]"
+pip install "cap-augmentation[albumentations]"   # CapAlbumentations wrapper
+pip install "cap-augmentation[torchvision]"      # CapTorchvision wrapper
+pip install "cap-augmentation[histogram]"        # histogram_matching=True support
+pip install "cap-augmentation[viz]"              # visualization helpers (matplotlib)
+pip install "cap-augmentation[dataset]"          # dependencies for dataset_tools/ scripts
 ```
 
-For development and tests:
+To install several extras at once:
 
 ```bash
-pip install -e ".[test]"
+pip install "cap-augmentation[albumentations,torchvision,histogram,viz]"
+```
+
+### From source (for development)
+
+Clone the repository and install in editable mode with the test extras:
+
+```bash
+git clone https://github.com/RocketFlash/cap-augmentation.git
+cd cap-augmentation
+pip install -e ".[test,torchvision]"
 pytest
 ```
 
