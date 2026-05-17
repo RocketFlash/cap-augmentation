@@ -238,6 +238,44 @@ transform = CapTorchvision(
 image, target = transform(image, target)
 ```
 
+### Reproducibility
+
+Pass an integer seed (or a `numpy.random.Generator`) via `rng=` to make a
+`CapAug` instance deterministic without seeding global state. Two
+instances built with the same seed produce bit-identical images, boxes,
+and masks:
+
+```python
+from cap_augmentation import CapAug
+
+aug = CapAug(SOURCE_IMAGES, rng=42)
+```
+
+If you leave `rng` unset, `CapAug` falls back to the stdlib `random`
+module and `np.random` — seed both for global reproducibility.
+
+### Source image cache
+
+Decoded source PNGs are cached in memory by default (one entry per
+unique source path). For training loops with `n_objects_range=(10, 20)`
+this avoids decoding the same PNG dozens of times per augmented image.
+Pass `cache_size=N` to cap the cache, or `cache_size=0` to disable it
+(useful when source files are rewritten between calls).
+
+### Object opacity / blending
+
+By default, `CapAug` alpha-composites each pasted object using the alpha
+channel of its source PNG: hard-edged masks produce crisp paste boxes,
+anti-aliased masks blend smoothly into the destination.
+
+`blending_coeff` adds an optional "ghost" effect: values in `(0, 1)`
+blend the source colors with the destination colors at the given source
+weight before the alpha composite, so `blending_coeff=0.5` produces a
+translucent paste. The default `0` (no ghost) is the most common
+setting. Source PNGs missing a transparency channel trigger an
+`OpaqueSourceWarning` because the pasted "object" then covers the full
+source rectangle — usually a bug in the source list.
+
 ### Object-level transforms
 
 `CapAug` can also transform each pasted object before it is inserted into the

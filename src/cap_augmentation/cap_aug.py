@@ -197,7 +197,13 @@ class CapAug:
     random_v_flip - source image random vertical flip
     histogram_matching - apply histogram matching
     hm_offset - histogram matching offset
-    blending_coeff - coefficient of image blending inside the pasted mask
+    blending_coeff - "ghost" factor inside the pasted mask region. 0 (the
+                     default) means the pasted object replaces the
+                     destination using its alpha mask. Values in (0, 1) blend
+                     the source pixels with the destination pixels at the
+                     given source weight before alpha-compositing, so 0.5
+                     produces a translucent ghost effect. Soft-alpha edges
+                     are always honored regardless of this value.
     image_format - color image format: {bgr, rgb}
     coords_format - output coordinates format: {xyxy, xywh, yolo}
     normalized_range - range in normalized image coordinates [0, 1]
