@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.3
+
+Documentation-only release.
+
+- Reformatted all Python code blocks in `README.md` to PEP 8 / black-compatible
+  style (kwargs on their own lines under multi-line calls, consistent list
+  spacing `[a, b]`, double-quoted strings, stdlib imports before third-party).
+- Fixed wrapper-install instructions: now show `pip install
+  "cap-augmentation[albumentations]"` instead of the editable `pip install -e
+  ".[albumentations]"`, matching the canonical install section.
+- BEV usage section explicitly states that `x_range` / `y_range` / `z_range` /
+  `h_range` are interpreted in metres when `bev_transform` is set (was
+  implicit before).
+- Marked `albu_transforms` parameter as a deprecated alias of
+  `object_transforms` in the README to match the code's docstring.
+- Removed a duplicate `### Usage with multiple classes` heading; fixed typos
+  ("cold be found", "cutted").
+- `.gitignore`: added `results/` for ad-hoc augmentation outputs.
+
 ## 0.2.2
 
 ### Bug fixes

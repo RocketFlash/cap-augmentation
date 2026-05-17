@@ -5,6 +5,9 @@ data/*
 # Demo-output renders (notebook re-runs, README screenshots).
 examples/images/result*.png
 
+# Ad-hoc augmentation results / smoke-test outputs.
+results/
+
 # Local Claude Code state
 .claude/
 

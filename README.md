@@ -70,76 +70,107 @@ All examples are shown in [examples/notebooks/bev_and_pedestrians_demo.ipynb](ht
 ### Usage in pixel coordinates
 
 ```python
-from cap_augmentation import CapAug
+from pathlib import Path
+
 import cv2
 
-SOURCE_IMAGES = ['list/', 'of/', 'paths/', 'to/', 'the/', 'source/', 'image/', 'files']
-##### For example a list of paths to images can be set like this #####
-# DATASET_ROOT = Path('data/human_dataset_filtered/')
-# SOURCE_IMAGES = sorted(list(DATASET_ROOT.glob('*.png')))
-######################################################################
+from cap_augmentation import CapAug
 
-image = cv2.imread('path/to/the/destination/image')
+# Any list of PNG paths with an alpha channel works as a source.
+# Typical workflow: generate cutouts with dataset_tools/cityscapes/
+# (see "Data preparation" below) and glob them:
+#
+#     SOURCE_IMAGES = sorted(Path("data/human_dataset_filtered").glob("*.png"))
+SOURCE_IMAGES = ["path/to/source1.png", "path/to/source2.png"]
 
-cap_aug = CapAug(SOURCE_IMAGES, n_objects_range=[10,20],
-                                       h_range=[100,101],
-                                       x_range=[500, 1500],
-                                       y_range=[600 ,1000],
-                                       coords_format='xyxy') # xyxy, xywh or yolo
-result_image, bboxes_coords, semantic_mask, instance_mask = cap_aug(image)
+image = cv2.imread("path/to/the/destination/image")
+
+cap_aug = CapAug(
+    SOURCE_IMAGES,
+    n_objects_range=[10, 20],
+    h_range=[80, 120],
+    x_range=[500, 1500],
+    y_range=[600, 1000],
+    coords_format="xyxy",  # "xyxy" | "xywh" | "yolo"
+)
+result_image, bboxes, semantic_mask, instance_mask = cap_aug(image)
 ```
 
 ### Usage in camera coordinate system (all values are in meters)
 
-When using bev transformation it is necessary to set range values in meters.
+When `bev_transform` is set, `x_range`, `y_range`, `z_range`, and `h_range`
+are interpreted in **meters** relative to the camera. The package projects
+each object to its pixel location and scales it by perspective using the
+provided calibration.
 
 ```python
-from cap_augmentation import CapAug
-from cap_augmentation.bev import BEV
 import cv2
 
-SOURCE_IMAGES = ['list/', 'of/', 'paths/', 'to/', 'the/', 'source/', 'image/', 'files']
+from cap_augmentation import CapAug
+from cap_augmentation.bev import BEV
 
-image = cv2.imread('path/to/the/destination/image')
+SOURCE_IMAGES = ["path/to/source1.png", "path/to/source2.png"]
 
-# Extrinsic camera parameters
-camera_info = {'pitch' : -2 ,
-               'yaw' : 0 ,
-               'roll' : 0 ,
-               'tx' : 0,
-               'ty' : 5,
-               'tz' : 0,
-               'output_w': 1000, # output bev image shape
-               'output_h': 1000}
-calib_yaml_path=None # path to intrinsic parameters (see example in src/cap_augmentation/bev/default_calibration.yaml)
-                     # if calib_yaml_path is None, intrinsic params will be loaded from the packaged default
+image = cv2.imread("path/to/the/destination/image")
 
-bev_transform = BEV(camera_info=camera_info,
-                    calib_yaml_path=calib_yaml_path)
+# Extrinsic camera parameters (camera pose relative to the ground frame).
+camera_info = {
+    "pitch": -2,
+    "yaw": 0,
+    "roll": 0,
+    "tx": 0,
+    "ty": 5,
+    "tz": 0,
+    "output_w": 1000,  # BEV (top-down) output canvas
+    "output_h": 1000,
+}
+# Path to intrinsic camera parameters YAML. If None, the packaged default
+# (src/cap_augmentation/bev/default_calibration.yaml) is used. Replace with
+# your own YAML when working with a different camera.
+calib_yaml_path = None
 
-cap_aug = CapAug(SOURCE_IMAGES, bev_transform=bev_transform,
-                                              n_objects_range=[30,50],
-                                              h_range=[2.0, 2.5],
-                                              x_range=[-25, 25],
-                                              y_range=[0 ,100],
-                                              z_range=[0 ,2],
-                                              coords_format='yolo') # xyxy, xywh or yolo
-result_image, bboxes_coords, semantic_mask, instance_mask = cap_aug(image)
+bev_transform = BEV(
+    camera_info=camera_info,
+    calib_yaml_path=calib_yaml_path,
+)
+
+cap_aug = CapAug(
+    SOURCE_IMAGES,
+    bev_transform=bev_transform,
+    n_objects_range=[30, 50],
+    h_range=[2.0, 2.5],     # object heights in meters
+    x_range=[-25, 25],      # left/right of camera axis, meters
+    y_range=[0, 100],       # distance from camera, meters
+    z_range=[0, 2],         # vertical offset, meters
+    coords_format="yolo",   # "xyxy" | "xywh" | "yolo"
+)
+result_image, bboxes, semantic_mask, instance_mask = cap_aug(image)
 ```
 
 ### Multi-class usage
 
 `CapAugMulticlass` runs several `CapAug` instances (one per class) and merges
-their boxes/masks, tagging each generated box with its class id.
+their boxes/masks, tagging each generated box with its class id (appended as
+the fifth column of the output box array).
 
 ```python
 from cap_augmentation import CapAug, CapAugMulticlass
 
 cap_augs = [
-    CapAug(PEDESTRIAN_IMAGES, n_objects_range=[5, 10], h_range=[80, 120],
-           x_range=[0, 1920], y_range=[400, 1000]),
-    CapAug(CAR_IMAGES, n_objects_range=[2, 5], h_range=[60, 100],
-           x_range=[0, 1920], y_range=[400, 1000]),
+    CapAug(
+        PEDESTRIAN_IMAGES,
+        n_objects_range=[5, 10],
+        h_range=[80, 120],
+        x_range=[0, 1920],
+        y_range=[400, 1000],
+    ),
+    CapAug(
+        CAR_IMAGES,
+        n_objects_range=[2, 5],
+        h_range=[60, 100],
+        x_range=[0, 1920],
+        y_range=[400, 1000],
+    ),
 ]
 cap_multiclass = CapAugMulticlass(
     cap_augs=cap_augs,
@@ -154,27 +185,31 @@ result_image, boxes_with_class, semantic_mask, instance_masks = cap_multiclass(i
 Install the optional Albumentations integration first:
 
 ```bash
-pip install -e ".[albumentations]"
+pip install "cap-augmentation[albumentations]"
 ```
 
 ```python
-
-from cap_augmentation import CapAlbumentations
 import albumentations as A
 
-transform = A.Compose([
-    CapAlbumentations(p=1,
-                      source_images=SOURCE_IMAGES,
-                      n_objects_range=[10,20],
-                      h_range=[100,101],
-                      x_range=[500, 1500],
-                      y_range=[600 ,1000],
-                      class_idx=1),
-    A.HorizontalFlip(p=0.5),
-    A.RandomBrightnessContrast(p=0.2),
-    A.RandomRain(p=1.0, blur_value=3)
-], bbox_params=A.BboxParams(format='pascal_voc'))
+from cap_augmentation import CapAlbumentations
 
+transform = A.Compose(
+    [
+        CapAlbumentations(
+            p=1.0,
+            source_images=SOURCE_IMAGES,
+            n_objects_range=[10, 20],
+            h_range=[80, 120],
+            x_range=[500, 1500],
+            y_range=[600, 1000],
+            class_idx=1,
+        ),
+        A.HorizontalFlip(p=0.5),
+        A.RandomBrightnessContrast(p=0.2),
+        A.RandomRain(p=1.0, blur_value=3),
+    ],
+    bbox_params=A.BboxParams(format="pascal_voc"),
+)
 ```
 
 Do not share one `CapAlbumentations` instance across concurrent threads;
@@ -205,17 +240,21 @@ image, target = transform(image, target)
 
 ### Object-level transforms
 
-`CapAug` can also transform each pasted object before it is inserted. Existing
-Albumentations callables still work through the `albu_transforms` argument; new
-code can use the library-neutral `object_transforms` argument.
+`CapAug` can also transform each pasted object before it is inserted into the
+destination. New code should use the library-neutral `object_transforms`
+argument; the older `albu_transforms` parameter is kept as a deprecated alias
+and still accepts Albumentations callables.
 
-`histogram_matching=True` requires the `histogram` extra.
+`histogram_matching=True` additionally requires the `histogram` extra.
 
 ```python
 from cap_augmentation import CapAug, ImageMaskTransform
 
+
 def object_transform(image, mask):
+    # ... transform the per-object RGB image and its alpha mask ...
     return image, mask
+
 
 cap_aug = CapAug(
     SOURCE_IMAGES,
@@ -223,37 +262,49 @@ cap_aug = CapAug(
 )
 ```
 
-### Usage with multiple classes
-Example of usage cold be found in [examples/notebooks/bev_and_pedestrians_demo.ipynb](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/bev_and_pedestrians_demo.ipynb)
-
 ## Data preparation
 
-Any png images with transparency are suitable for inserting objects for object detection or instance segmentation. It is possible to generate own dataset of png images with transparency by cutting images from various segmentation datasets. An example of preparing such a dataset for insertion is shown below.
+Any PNG image with transparency is suitable as a source: the alpha channel
+defines the visible region, and bounding boxes are computed from it. You can
+generate such cutouts yourself from instance segmentation datasets. An
+example for Cityscapes / CityPersons is below.
 
-The `dataset_tools/` scripts are repository tools, not part of the installed
-Python package. Run them from a cloned repository after installing the
-`dataset` extra (`pip install -e ".[dataset]"`).
+The `dataset_tools/` scripts are repository tools, **not** part of the
+installed Python package. Clone the repository and install the `dataset`
+extra to use them:
 
-### Generate pedestrians dataset from CityScapes and CityPersons
+```bash
+git clone https://github.com/RocketFlash/cap-augmentation.git
+cd cap-augmentation
+pip install -e ".[dataset]"
+```
 
-Put [Cityscapes](https://www.cityscapes-dataset.com/) and [CityPersons](https://github.com/cvgroup-njust/CityPersons) datasets in ./data folder. Edit parameters in dataset_tools/cityscapes/config.py if you want and then just run:
+### Generate pedestrians dataset from Cityscapes and CityPersons
+
+Put [Cityscapes](https://www.cityscapes-dataset.com/) and
+[CityPersons](https://github.com/cvgroup-njust/CityPersons) into `./data/`.
+Edit `dataset_tools/cityscapes/config.py` if needed, then run:
 
 ```bash
 ./dataset_tools/cityscapes/run.sh
 ```
 
-This script will create a dataset of png images cutted and filtered in the data/human_dataset_filtered folder or in the folder that you specified in the dataset_tools/cityscapes/config.py file.
+This produces the filtered cutouts in `data/human_dataset_filtered/` (or the
+path set in the config file).
 
-Another option is to run python scripts manually step by step. First, we need to create .png files of people using instance masks from cityscapes dataset:
+You can also run the two steps manually. First, cut PNGs of people out of
+Cityscapes images using their instance masks:
 
 ```bash
 python dataset_tools/cityscapes/generate_dataset.py
 ```
 
-Next, we need to filter images to remove too small or too cropped (only a small part of the body is visible) images:
+Then filter out cutouts that are too small or too cropped (only a small part
+of the body visible):
 
 ```bash
 python dataset_tools/cityscapes/filter_dataset.py
 ```
 
-Now the dataset for insertion is available in ./data/human_dataset_filtered.
+The result is available in `./data/human_dataset_filtered/` and can be passed
+directly to `CapAug(source_images=...)`.
