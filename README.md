@@ -62,9 +62,7 @@ The wrapper classes require their respective extras (`albumentations`,
 ## Example of usage
 
 All examples are shown in [examples/notebooks/bev_and_pedestrians_demo.ipynb](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/bev_and_pedestrians_demo.ipynb)
-(BEV / pixel coordinates / multi-class) and
-[examples/notebooks/vinbig_demo.ipynb](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/vinbig_demo.ipynb)
-(VinBigData chest X-rays).
+(BEV / pixel coordinates / multi-class).
 
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Rmln475YERs5ZIp3_jDKTV8JEfk_qDdy?usp=sharing)
@@ -259,30 +257,3 @@ python dataset_tools/cityscapes/filter_dataset.py
 ```
 
 Now the dataset for insertion is available in ./data/human_dataset_filtered.
-
-### Generate medical-imaging dataset from VinBigData
-
-[VinBigData Chest X-ray Abnormalities Detection](https://www.kaggle.com/c/vinbigdata-chest-xray-abnormalities-detection)
-is a public dataset of chest X-rays annotated with bounding boxes for 14
-thoracic abnormality classes. The `dataset_tools/vinbig/` scripts crop each annotated
-bounding box into a per-class PNG library suitable for cut-and-paste insertion,
-and (optionally) compute per-class spatial distributions used as
-`probability_map` / `mean_h_norm` inputs for `CapAug`.
-
-Edit paths in `dataset_tools/vinbig/config.py` to point at the VinBigData PNG
-images and the annotation CSV, then run:
-
-```bash
-# Crop annotated boxes into data/vinbig_dataset/<class_id>/<image_id>_<class>_<n>.png
-python dataset_tools/vinbig/generate_dataset.py
-
-# Save per-class probability maps + bbox stats to data/vinbig_dataset/analytics/<class_id>.npy
-python dataset_tools/vinbig/generate_analytics.py
-```
-
-The analytics files are saved as Python dictionaries pickled inside `.npy`
-files. They are intended to be loaded with
-`np.load(path, allow_pickle=True).item()` — only load files from a trusted
-source, since pickled objects can execute arbitrary code on load. An end-to-end
-example is in
-[examples/notebooks/vinbig_demo.ipynb](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/vinbig_demo.ipynb).
