@@ -716,6 +716,18 @@ class CapAug:
                     f"height/width; got image {rgb_img.shape[:2]} and mask "
                     f"{mask_src.shape[:2]}"
                 )
+            # CapAug splits image and alpha BEFORE the transform: rgb_img is
+            # 3-channel and mask_src holds alpha. If the transform returns a
+            # 4-channel image (e.g. plugging an Albumentations pipeline that
+            # carries alpha through), the composite below would broadcast a
+            # (H, W) alpha against a (H, W, 4) src and produce silently wrong
+            # pixels. Surface the contract clearly.
+            if rgb_img.ndim != 3 or rgb_img.shape[2] != 3:
+                raise ValueError(
+                    "object_transforms must return a 3-channel image (alpha "
+                    "is handed in and out via the separate mask argument); "
+                    f"got shape {rgb_img.shape}"
+                )
 
         src_h, src_w = mask_src.shape[:2]
         dst_h, dst_w = image_dst.shape[:2]

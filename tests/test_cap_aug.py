@@ -289,6 +289,34 @@ def test_object_transform_with_mismatched_shapes_raises(
         aug(destination_image)
 
 
+def test_object_transform_returning_four_channels_raises(
+    destination_image, make_source_image
+):
+    """CapAug separates RGB from alpha before invoking the transform. A
+    transform that hands back a 4-channel image would broadcast a (H, W)
+    alpha against a (H, W, 4) src downstream and produce silently wrong
+    pixels — surface the contract instead.
+    """
+    source = make_source_image()
+
+    def alpha_in_image(image, mask):
+        rgba = np.dstack([image, mask])  # 4 channels — wrong by contract
+        return rgba, mask
+
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[50, 51],
+        y_range=[80, 81],
+        random_h_flip=False,
+        object_transforms=ImageMaskTransform(alpha_in_image),
+    )
+
+    with pytest.raises(ValueError, match="3-channel image"):
+        aug(destination_image)
+
+
 def test_soft_alpha_edges_blend_with_destination(tmp_path, destination_image):
     """Regression: a source with anti-aliased edges (intermediate alpha) used
     to be hard-thresholded by the bitwise composite. After the soft-alpha
