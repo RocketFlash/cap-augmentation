@@ -40,7 +40,22 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: ruff check src tests dataset_tools
       - name: Run tests
-        run: pytest -q
+        # Coverage runs on the Linux/3.12 job only — the per-platform smoke
+        # checks just need the test results, not another HTML report. The
+        # XML report is uploaded as a build artifact below for inspection.
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.python-version }}" = "3.12" ]; then
+            pytest -q --cov --cov-report=term-missing --cov-report=xml
+          else
+            pytest -q
+          fi
+        shell: bash
+      - name: Upload coverage XML
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
 
   torchvision:
     runs-on: ubuntu-latest

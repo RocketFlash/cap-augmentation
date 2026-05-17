@@ -74,6 +74,7 @@ test = [
     "matplotlib",
     "pandas",
     "pytest>=8",
+    "pytest-cov>=5",
     "ruff>=0.6",
     "scikit-image>=0.19",
     "scipy",
@@ -111,7 +112,21 @@ include = ["cap_augmentation*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-p no:capture"
+# `.` lets `from dataset_tools.* import ...` resolve in tests (the package
+# is intentionally repo-only and not under src/). Don't drop it.
 pythonpath = ["src", "."]
+
+[tool.coverage.run]
+branch = true
+source = ["cap_augmentation"]
+omit = ["src/cap_augmentation/wrappers/tv.py"]  # exercised in a separate CI job
+
+[tool.coverage.report]
+exclude_also = [
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@overload",
+]
 
 [tool.black]
 target-version = ["py310"]
