@@ -10,8 +10,13 @@ source .venv/bin/activate
 # with setuptools>=68 (see pyproject.toml [build-system]); this just brings
 # the dev venv's seeded versions in line.
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install -e ".[test]"
+python -m pip install -e ".[test,dev]"
 ```
+
+`[test]` installs the runtime extras the tests need; `[dev]` adds the
+contributor toolchain (black, ruff, build). End users who only want the
+runtime should install `pip install "cap-augmentation[all]"` — that
+deliberately omits the dev tools.
 
 ## Tests
 

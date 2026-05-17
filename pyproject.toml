@@ -69,13 +69,11 @@ histogram = [
 ]
 test = [
     "albumentations>=2.0.8,<3",
-    "black>=24",
     "easydict",
     "matplotlib",
     "pandas",
     "pytest>=8",
     "pytest-cov>=5",
-    "ruff>=0.6",
     "scikit-image>=0.19",
     "scipy",
     "tqdm",
@@ -87,18 +85,25 @@ torchvision = [
 viz = [
     "matplotlib",
 ]
+# Runtime convenience: every optional runtime feature in one go. Does NOT
+# pull in dev tools (black/ruff/pytest) — use `[dev]` for those.
 all = [
     "albumentations>=2.0.8,<3",
-    "black>=24",
     "easydict",
     "matplotlib",
     "pandas",
-    "ruff>=0.6",
     "scikit-image>=0.19",
     "scipy",
     "torch>=2",
     "torchvision>=0.17",
     "tqdm",
+]
+# Contributor extras: lint + format tools layered on top of [test]. Install
+# with `pip install -e ".[dev]"` to get the same toolchain CI runs.
+dev = [
+    "black>=24",
+    "build>=1",
+    "ruff>=0.6",
 ]
 
 [tool.setuptools.packages.find]

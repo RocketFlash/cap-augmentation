@@ -30,14 +30,21 @@ jobs:
       - name: Install package
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[test]"
+          # The Linux/3.12 job pulls in the dev tools so it can run
+          # black + ruff; other jobs save a few seconds by skipping them.
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.python-version }}" = "3.12" ]; then
+            python -m pip install -e ".[test,dev]"
+          else
+            python -m pip install -e ".[test]"
+          fi
+        shell: bash
       - name: Check formatting
-        # Black/ruff run on Linux only — formatting is OS-independent and
-        # rerunning on three platforms would just multiply noise.
-        if: matrix.os == 'ubuntu-latest'
+        # Black/ruff run on Linux/3.12 only — formatting is OS-independent
+        # and rerunning on every job would just multiply noise.
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: black --check src tests dataset_tools
       - name: Lint
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: ruff check src tests dataset_tools
       - name: Run tests
         # Coverage runs on the Linux/3.12 job only — the per-platform smoke
