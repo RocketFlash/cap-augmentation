@@ -455,6 +455,41 @@ def test_cache_evicts_least_recently_used(make_source_image, destination_image):
     assert {key[0] for key in aug._image_cache} == {str(sources[1]), str(sources[2])}
 
 
+def test_pixel_mode_rejects_float_ranges(make_source_image, destination_image):
+    """Regression: numpy.random.randint silently truncates floats, so a user
+    who passes (0.5, 0.8) intending normalized coordinates would get all-zero
+    placements. Validate up front and point at the right mode flag.
+    """
+    source = make_source_image()
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=[20, 21],
+        x_range=[0.5, 0.8],
+        y_range=[0.5, 0.8],
+    )
+
+    with pytest.raises(ValueError, match="normalized_range=True"):
+        aug(destination_image)
+
+
+def test_pixel_mode_accepts_int_typed_floats(make_source_image, destination_image):
+    """Whole-number floats like 50.0 are user-friendly; treat them as valid
+    pixel coordinates rather than rejecting on dtype alone.
+    """
+    source = make_source_image()
+    aug = CapAug(
+        [source],
+        n_objects_range=[1, 1],
+        h_range=[20.0, 21.0],
+        x_range=[50.0, 51.0],
+        y_range=[80.0, 81.0],
+        random_h_flip=False,
+    )
+    _, boxes, *_ = aug(destination_image)
+    assert boxes.shape == (1, 4)
+
+
 def test_missing_source_image_raises(destination_image, tmp_path):
     aug = CapAug(
         [tmp_path / "missing.png"],

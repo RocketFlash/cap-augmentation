@@ -254,6 +254,7 @@ class CapAug:
         n_objects = random.randint(*self.n_objects_range)
         heights = None
         scales = None
+        self._validate_pixel_mode_ranges()
 
         if self.probability_map is not None:
             probability_map = np.asarray(self.probability_map, dtype=float)
@@ -323,6 +324,37 @@ class CapAug:
             )
 
         return self.generate_objects_coord(image, points, heights, scales)
+
+    def _validate_pixel_mode_ranges(self):
+        """In pixel mode, ranges feed np.random.randint, which silently
+        truncates floats. A user who passes (0.0, 1.0) intending normalized
+        coordinates would get all-zero placements with no feedback. Surface
+        this as an explicit error.
+        """
+        if (
+            self.bev_transform is not None
+            or self.probability_map is not None
+            or self.normalized_range
+        ):
+            return
+
+        def _is_int_range(values):
+            return all(float(v).is_integer() for v in values)
+
+        offending = []
+        for name in ("x_range", "y_range"):
+            if not _is_int_range(getattr(self, name)):
+                offending.append(name)
+        if self.h_range is not None and not _is_int_range(self.h_range):
+            offending.append("h_range")
+
+        if offending:
+            raise ValueError(
+                f"Pixel-mode ranges must be integers; got non-integer "
+                f"values in: {', '.join(offending)}. Pass integer pixel "
+                "coordinates, or set normalized_range=True (values in [0, 1]) "
+                "or bev_transform=BEV(...) (values in meters)."
+            )
 
     def generate_objects_coord(self, image, points, heights, scales):
         """
