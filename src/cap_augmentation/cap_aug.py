@@ -50,12 +50,21 @@ def _apply_image_mask_transform(transform, image, mask):
 
 
 def _align_columns(*arrays):
+    """Pad arrays on the right with zeros so they all have max_cols columns.
+
+    Preserves the widest input's dtype on the padded values to avoid silently
+    upcasting integer boxes to float64 (which would change downstream
+    ``.tolist()`` outputs). Padded columns are zero-filled — callers that
+    rely on a specific column meaning past index 4 (class id) must align
+    their arrays themselves.
+    """
     max_cols = max(array.shape[1] for array in arrays)
+    pad_dtype = np.result_type(*(array.dtype for array in arrays))
     aligned = []
     for array in arrays:
         if array.shape[1] < max_cols:
-            pad = np.zeros((len(array), max_cols - array.shape[1]))
-            array = np.c_[array, pad]
+            pad = np.zeros((len(array), max_cols - array.shape[1]), dtype=pad_dtype)
+            array = np.concatenate([array.astype(pad_dtype, copy=False), pad], axis=1)
         aligned.append(array)
     return aligned
 

@@ -563,6 +563,32 @@ def test_multiclass_keeps_class_ids_when_some_augmenters_are_skipped(destination
     assert len(instance_masks) == 1
 
 
+def test_multiclass_padding_preserves_integer_dtype(destination_image):
+    """Regression: zero-padding used np.zeros() (float64 default), so
+    appending a 5-col int array to a 6-col int array upcast both to float
+    and broke `.tolist()` integer comparisons downstream.
+    """
+
+    class DummyAug:
+        def __init__(self, boxes):
+            self.boxes = np.asarray(boxes, dtype=np.int64)
+
+        def __call__(self, image):
+            semantic_mask = np.zeros(image.shape[:2], dtype=np.uint8)
+            return image, self.boxes, semantic_mask, semantic_mask.copy()
+
+    # First augmenter returns 6 columns (with extra metadata col), second 5.
+    multiclass = CapAugMulticlass(
+        [DummyAug([[1, 1, 3, 3, 99, 42]]), DummyAug([[5, 1, 7, 3, 0]])],
+        probabilities=[1.0, 1.0],
+        class_idxs=[2, 7],
+    )
+    _, boxes, _, _ = multiclass(destination_image)
+
+    assert boxes.dtype.kind in ("i", "u")
+    assert boxes.tolist() == [[1, 1, 3, 3, 2, 42], [5, 1, 7, 3, 7, 0]]
+
+
 def test_multiclass_aligns_boxes_with_existing_class_columns(destination_image):
     class DummyAug:
         def __init__(self, boxes):
