@@ -165,6 +165,42 @@ cap_aug = CapAug(
 result_image, bboxes, semantic_mask, instance_mask = cap_aug(image)
 ```
 
+#### Without your own calibration
+
+If you don't have a real camera calibration, `BEV.from_image_shape` synthesizes
+intrinsics from the destination image's dimensions: principal point at the
+image center, `fx = fy = max(W, H)` (≈ 50° horizontal FOV, a reasonable
+"normal-lens" prior). Combined with `BEV`'s built-in extrinsic defaults
+(`pitch=-2°, ty=5m, …`), this lets you opt into BEV mode without writing
+a YAML or measuring your camera.
+
+```python
+import cv2
+from cap_augmentation import CapAug
+from cap_augmentation.bev import BEV
+
+image = cv2.imread("path/to/scene.jpg")
+bev_transform = BEV.from_image_shape(image.shape)   # zero-config BEV
+
+cap_aug = CapAug(
+    SOURCE_IMAGES,
+    bev_transform=bev_transform,
+    h_range=[2.0, 2.5], x_range=[-25, 25],
+    y_range=[10, 50],   z_range=[0, 0],
+)
+result_image, bboxes, semantic_mask, instance_mask = cap_aug(image)
+```
+
+Caveat: the synthesized intrinsics will be wrong for fisheye, wide-angle,
+or strongly telephoto sensors — perspective scaling of distant objects
+will be off. Pass a real ROS-style YAML via `BEV(calib_yaml_path=…)` when
+you have one.
+
+If you don't need perspective at all, skip `BEV` entirely and use the
+pixel-coordinates path shown earlier (`CapAug(...)` with no
+`bev_transform=`) — it cuts and pastes in image space and never touches
+camera geometry.
+
 ### Multi-class usage
 
 `CapAugMulticlass` runs several `CapAug` instances (one per class) and merges
