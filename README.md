@@ -34,13 +34,19 @@ pip install "cap-augmentation[albumentations,torchvision,histogram,viz]"
 
 ### From source (for development)
 
-Clone the repository and install in editable mode with the test extras:
+Clone the repository and install in editable mode with the test and developer
+extras:
 
 ```bash
 git clone https://github.com/RocketFlash/cap-augmentation.git
 cd cap-augmentation
-pip install -e ".[test,torchvision]"
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e ".[test,dev,torchvision]"
 pytest
+black --check src tests dataset_tools
+ruff check src tests dataset_tools
 ```
 
 ## Public API
@@ -61,11 +67,19 @@ The wrapper classes require their respective extras (`albumentations`,
 
 ## Example of usage
 
-All examples are shown in [examples/notebooks/bev_and_pedestrians_demo.ipynb](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/bev_and_pedestrians_demo.ipynb)
-(BEV / pixel coordinates / multi-class).
+Examples are available as notebooks:
 
+- [BEV / pixel coordinates / multi-class demo](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/bev_and_pedestrians_demo.ipynb)
+  [![Open BEV demo in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RocketFlash/cap-augmentation/blob/main/examples/notebooks/bev_and_pedestrians_demo.ipynb)
+- [VinBigData medical-imaging demo](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/vinbig_demo.ipynb)
+  [![Open VinBigData demo in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RocketFlash/cap-augmentation/blob/main/examples/notebooks/vinbig_demo.ipynb)
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Rmln475YERs5ZIp3_jDKTV8JEfk_qDdy?usp=sharing)
+When a badge is opened, Colab loads the notebook from GitHub. Run the first
+`Colab setup` cell before the rest of the notebook; it clones this repository
+into `/content/cap-augmentation`, switches the working directory there, and
+installs the package with the extras used by the demos. Dataset-specific cells
+still expect the corresponding generated data under `data/` or a mounted
+external dataset path.
 
 ### Usage in pixel coordinates
 
