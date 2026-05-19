@@ -80,4 +80,4 @@ def seamless_blend(
     result = cv2.seamlessClone(source, background, mask, center, _MODE_FLAGS[mode])
 
     if not cv2.imwrite(str(output_path), result):
-        raise IOError(f"Failed to write output image: {output_path}")
+        raise OSError(f"Failed to write output image: {output_path}")
