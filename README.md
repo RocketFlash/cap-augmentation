@@ -59,6 +59,7 @@ from cap_augmentation import (
     CapTorchvision,      # torchvision v2-style wrapper
     ImageMaskTransform,  # adapter for per-object (image, mask) callables
     resize_keep_ar,      # aspect-ratio-preserving resize helper
+    seamless_blend,      # Poisson (cv2.seamlessClone) blend of a PNG over a background
 )
 ```
 

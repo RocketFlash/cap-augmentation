@@ -3,6 +3,7 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
+from .blending import seamless_blend
 from .cap_aug import CapAug, CapAugMulticlass, OpaqueSourceWarning, resize_keep_ar
 
 try:
@@ -19,6 +20,7 @@ __all__ = [
     "OpaqueSourceWarning",
     "__version__",
     "resize_keep_ar",
+    "seamless_blend",
 ]
 
 
