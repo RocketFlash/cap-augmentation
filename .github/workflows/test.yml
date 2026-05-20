@@ -6,11 +6,21 @@ on:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.11", "3.12"]
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          # Cross-platform smoke check on a single Python version. Pure-Python
+          # + cv2 wheels exist for macOS/Windows; one job each is enough to
+          # catch path-handling and line-ending regressions without paying
+          # for a full matrix.
+          - os: macos-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
 
     steps:
       - uses: actions/checkout@v4
@@ -19,14 +29,40 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install package
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[test]"
+          python -m pip install --upgrade pip setuptools wheel
+          # The Linux/3.12 job pulls in the dev tools so it can run
+          # black + ruff; other jobs save a few seconds by skipping them.
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.python-version }}" = "3.12" ]; then
+            python -m pip install -e ".[test,dev]"
+          else
+            python -m pip install -e ".[test]"
+          fi
+        shell: bash
       - name: Check formatting
+        # Black/ruff run on Linux/3.12 only — formatting is OS-independent
+        # and rerunning on every job would just multiply noise.
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: black --check src tests dataset_tools
       - name: Lint
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: ruff check src tests dataset_tools
       - name: Run tests
-        run: pytest -q
+        # Coverage runs on the Linux/3.12 job only — the per-platform smoke
+        # checks just need the test results, not another HTML report. The
+        # XML report is uploaded as a build artifact below for inspection.
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.python-version }}" = "3.12" ]; then
+            pytest -q --cov --cov-report=term-missing --cov-report=xml
+          else
+            pytest -q
+          fi
+        shell: bash
+      - name: Upload coverage XML
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
 
   torchvision:
     runs-on: ubuntu-latest
@@ -38,7 +74,7 @@ jobs:
           python-version: "3.11"
       - name: Install package with Torchvision
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
           python -m pip install -e ".[test,torchvision]"
       - name: Run tests
         run: pytest -q

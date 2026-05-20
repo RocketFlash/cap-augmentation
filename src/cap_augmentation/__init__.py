@@ -3,10 +3,11 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
-from .cap_aug import CapAug, CapAugMulticlass, resize_keep_ar
+from .blending import seamless_blend
+from .cap_aug import CapAug, CapAugMulticlass, OpaqueSourceWarning, resize_keep_ar
 
 try:
-    __version__ = _version("cap-augmentation")
+    __version__: str = _version("cap-augmentation")
 except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
@@ -16,8 +17,10 @@ __all__ = [
     "CapAlbumentations",
     "CapTorchvision",
     "ImageMaskTransform",
+    "OpaqueSourceWarning",
     "__version__",
     "resize_keep_ar",
+    "seamless_blend",
 ]
 
 

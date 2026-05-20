@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cap-augmentation"
-version = "0.2.3"
+version = "0.4.1"
 description = "Cut-and-paste augmentation for detection and segmentation datasets"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]
 authors = [
@@ -33,10 +33,10 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Image Recognition",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -69,12 +69,11 @@ histogram = [
 ]
 test = [
     "albumentations>=2.0.8,<3",
-    "black>=24",
     "easydict",
     "matplotlib",
     "pandas",
     "pytest>=8",
-    "ruff>=0.6",
+    "pytest-cov>=5",
     "scikit-image>=0.19",
     "scipy",
     "tqdm",
@@ -86,18 +85,25 @@ torchvision = [
 viz = [
     "matplotlib",
 ]
+# Runtime convenience: every optional runtime feature in one go. Does NOT
+# pull in dev tools (black/ruff/pytest) — use `[dev]` for those.
 all = [
     "albumentations>=2.0.8,<3",
-    "black>=24",
     "easydict",
     "matplotlib",
     "pandas",
-    "ruff>=0.6",
     "scikit-image>=0.19",
     "scipy",
     "torch>=2",
     "torchvision>=0.17",
     "tqdm",
+]
+# Contributor extras: lint + format tools layered on top of [test]. Install
+# with `pip install -e ".[dev]"` to get the same toolchain CI runs.
+dev = [
+    "black>=24",
+    "build>=1",
+    "ruff>=0.6",
 ]
 
 [tool.setuptools.packages.find]
@@ -105,19 +111,45 @@ where = ["src"]
 include = ["cap_augmentation*"]
 
 [tool.setuptools.package-data]
+"cap_augmentation" = ["py.typed"]
 "cap_augmentation.bev" = ["default_calibration.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-p no:capture"
+# `.` lets `from dataset_tools.* import ...` resolve in tests (the package
+# is intentionally repo-only and not under src/). Don't drop it.
 pythonpath = ["src", "."]
+# Promote deprecation warnings from our optional integrations to errors so
+# their next major versions can't sneak past us silently. The wrapper
+# tests will fail loudly the moment Albumentations or Torchvision change
+# an API we depend on, giving us an early signal to update the wrapper
+# rather than finding out from a user bug report.
+filterwarnings = [
+    "error::DeprecationWarning:albumentations",
+    "error::PendingDeprecationWarning:albumentations",
+    "error::DeprecationWarning:torchvision",
+    "error::PendingDeprecationWarning:torchvision",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["cap_augmentation"]
+omit = ["src/cap_augmentation/wrappers/tv.py"]  # exercised in a separate CI job
+
+[tool.coverage.report]
+exclude_also = [
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@overload",
+]
 
 [tool.black]
-target-version = ["py39"]
+target-version = ["py310"]
 include = '\.py$'
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 88
 extend-exclude = ["examples"]
 

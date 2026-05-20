@@ -97,6 +97,46 @@ def calculate_BEV_H(calib_params, camera_info=None, pix_per_meter=None):
     return image2ground
 
 
+def _load_calib_yaml(calib_yaml_path):
+    """Read a ROS-style camera_info YAML; return {"camera_matrix": 3x3 ndarray}."""
+    with open(calib_yaml_path) as file:
+        calibration_params = yaml.safe_load(file)
+    param = calibration_params["camera_matrix"]
+    matrix = np.array(param["data"]).reshape((param["rows"], param["cols"]))
+    return {"camera_matrix": matrix}
+
+
+def intrinsics_from_image_shape(height, width):
+    """Synthesize a camera matrix from image dimensions.
+
+    Returns the same ``{"camera_matrix": 3x3 ndarray}`` shape that
+    ``_load_calib_yaml`` produces, so it can be passed to
+    ``BEV(calib_matrices=...)`` or ``calculate_BEV_H`` directly.
+
+    The synthesized intrinsics assume:
+
+    - principal point at image center: ``(width/2, height/2)``
+    - equal focal lengths: ``fx = fy = max(width, height)`` (~50° HFOV,
+      a reasonable prior for a "normal" lens)
+    - zero skew, no distortion
+
+    This is a stand-in for a real calibration when the user doesn't have
+    one. It will be wrong for fisheye/wide-angle/telephoto sensors —
+    perspective scaling of distant objects will be off. Pass a real
+    ROS-style calibration YAML via ``BEV(calib_yaml_path=...)`` for
+    production use.
+    """
+    f = float(max(width, height))
+    K = np.array(
+        [
+            [f, 0.0, float(width) / 2.0],
+            [0.0, f, float(height) / 2.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    return {"camera_matrix": K}
+
+
 def get_BEV_H(camera_info=None, calib_yaml_path=None, pix_per_meter=None):
     """Load camera intrinsics and build the image-to-BEV homography.
 
@@ -106,27 +146,30 @@ def get_BEV_H(camera_info=None, calib_yaml_path=None, pix_per_meter=None):
     """
     if calib_yaml_path is None:
         calib_yaml_path = _DEFAULT_CALIB_PATH
-    calib_matrices = {}
-
-    with open(calib_yaml_path) as file:
-        calibration_params = yaml.safe_load(file)
-
-        param = calibration_params["camera_matrix"]
-        matrix = np.array(param["data"]).reshape((param["rows"], param["cols"]))
-        calib_matrices["camera_matrix"] = matrix
-
+    calib_matrices = _load_calib_yaml(calib_yaml_path)
     H = calculate_BEV_H(calib_matrices, camera_info, pix_per_meter=pix_per_meter)
     return H, calib_matrices
 
 
 class BEV:
-    def __init__(self, camera_info=None, calib_yaml_path=None, pix_per_meter=None):
+    def __init__(
+        self,
+        camera_info=None,
+        calib_yaml_path=None,
+        pix_per_meter=None,
+        calib_matrices=None,
+    ):
+        if calib_matrices is not None and calib_yaml_path is not None:
+            raise ValueError("Pass either calib_matrices or calib_yaml_path, not both.")
         if pix_per_meter is None:
             pix_per_meter = _DEFAULT_PIX_PER_METER
-        self.H, self.calib_matrices = get_BEV_H(
-            camera_info,
-            calib_yaml_path,
-            pix_per_meter=pix_per_meter,
+        if calib_matrices is None:
+            if calib_yaml_path is None:
+                calib_yaml_path = _DEFAULT_CALIB_PATH
+            calib_matrices = _load_calib_yaml(calib_yaml_path)
+        self.calib_matrices = calib_matrices
+        self.H = calculate_BEV_H(
+            calib_matrices, camera_info, pix_per_meter=pix_per_meter
         )
         self.inv_H = np.linalg.inv(self.H)
         self.pixels_per_meter = pix_per_meter
@@ -137,6 +180,28 @@ class BEV:
 
         self.f_x = self.calib_matrices["camera_matrix"][0, 0]
         self.f_y = self.calib_matrices["camera_matrix"][1, 1]
+
+    @classmethod
+    def from_image_shape(cls, shape, camera_info=None, pix_per_meter=None):
+        """Build a BEV transform with intrinsics synthesized from image size.
+
+        ``shape`` is ``(height, width)`` — accepts an ``ndarray.shape`` tuple
+        directly. See :func:`intrinsics_from_image_shape` for the heuristic
+        used and its caveats.
+
+        For users without their own camera calibration this is a better
+        starting point than the AXIS-1920x1080 placeholder shipped as
+        :data:`_DEFAULT_CALIB_PATH`, because the principal point and focal
+        length match *this* image's geometry rather than someone else's.
+        """
+        if len(shape) < 2:
+            raise ValueError(f"shape must be (height, width[, ...]); got {shape!r}")
+        height, width = int(shape[0]), int(shape[1])
+        return cls(
+            camera_info=camera_info,
+            calib_matrices=intrinsics_from_image_shape(height, width),
+            pix_per_meter=pix_per_meter,
+        )
 
     def transform(self, img):
         transformed_img = cv2.warpPerspective(

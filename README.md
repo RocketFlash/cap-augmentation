@@ -34,13 +34,19 @@ pip install "cap-augmentation[albumentations,torchvision,histogram,viz]"
 
 ### From source (for development)
 
-Clone the repository and install in editable mode with the test extras:
+Clone the repository and install in editable mode with the test and developer
+extras:
 
 ```bash
 git clone https://github.com/RocketFlash/cap-augmentation.git
 cd cap-augmentation
-pip install -e ".[test,torchvision]"
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e ".[test,dev,torchvision]"
 pytest
+black --check src tests dataset_tools
+ruff check src tests dataset_tools
 ```
 
 ## Public API
@@ -53,6 +59,7 @@ from cap_augmentation import (
     CapTorchvision,      # torchvision v2-style wrapper
     ImageMaskTransform,  # adapter for per-object (image, mask) callables
     resize_keep_ar,      # aspect-ratio-preserving resize helper
+    seamless_blend,      # Poisson (cv2.seamlessClone) blend of a PNG over a background
 )
 ```
 
@@ -61,11 +68,19 @@ The wrapper classes require their respective extras (`albumentations`,
 
 ## Example of usage
 
-All examples are shown in [examples/notebooks/bev_and_pedestrians_demo.ipynb](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/bev_and_pedestrians_demo.ipynb)
-(BEV / pixel coordinates / multi-class).
+Examples are available as notebooks:
 
+- [BEV / pixel coordinates / multi-class demo](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/bev_and_pedestrians_demo.ipynb)
+  [![Open BEV demo in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RocketFlash/cap-augmentation/blob/main/examples/notebooks/bev_and_pedestrians_demo.ipynb)
+- [VinBigData medical-imaging demo](https://github.com/RocketFlash/cap-augmentation/blob/main/examples/notebooks/vinbig_demo.ipynb)
+  [![Open VinBigData demo in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RocketFlash/cap-augmentation/blob/main/examples/notebooks/vinbig_demo.ipynb)
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Rmln475YERs5ZIp3_jDKTV8JEfk_qDdy?usp=sharing)
+When a badge is opened, Colab loads the notebook from GitHub. Run the first
+`Colab setup` cell before the rest of the notebook; it clones this repository
+into `/content/cap-augmentation`, switches the working directory there, and
+installs the package with the extras used by the demos. Dataset-specific cells
+still expect the corresponding generated data under `data/` or a mounted
+external dataset path.
 
 ### Usage in pixel coordinates
 
@@ -125,8 +140,11 @@ camera_info = {
     "output_h": 1000,
 }
 # Path to intrinsic camera parameters YAML. If None, the packaged default
-# (src/cap_augmentation/bev/default_calibration.yaml) is used. Replace with
-# your own YAML when working with a different camera.
+# (src/cap_augmentation/bev/default_calibration.yaml) is used. That default
+# corresponds to a 1920x1080 AXIS surveillance camera (~46° horizontal FOV)
+# — it is a placeholder. Pass your own ROS-style camera_info YAML when
+# working with a different camera; mismatched intrinsics will shift the
+# BEV projection and skew the meters→pixels conversion.
 calib_yaml_path = None
 
 bev_transform = BEV(
@@ -146,6 +164,42 @@ cap_aug = CapAug(
 )
 result_image, bboxes, semantic_mask, instance_mask = cap_aug(image)
 ```
+
+#### Without your own calibration
+
+If you don't have a real camera calibration, `BEV.from_image_shape` synthesizes
+intrinsics from the destination image's dimensions: principal point at the
+image center, `fx = fy = max(W, H)` (≈ 50° horizontal FOV, a reasonable
+"normal-lens" prior). Combined with `BEV`'s built-in extrinsic defaults
+(`pitch=-2°, ty=5m, …`), this lets you opt into BEV mode without writing
+a YAML or measuring your camera.
+
+```python
+import cv2
+from cap_augmentation import CapAug
+from cap_augmentation.bev import BEV
+
+image = cv2.imread("path/to/scene.jpg")
+bev_transform = BEV.from_image_shape(image.shape)   # zero-config BEV
+
+cap_aug = CapAug(
+    SOURCE_IMAGES,
+    bev_transform=bev_transform,
+    h_range=[2.0, 2.5], x_range=[-25, 25],
+    y_range=[10, 50],   z_range=[0, 0],
+)
+result_image, bboxes, semantic_mask, instance_mask = cap_aug(image)
+```
+
+Caveat: the synthesized intrinsics will be wrong for fisheye, wide-angle,
+or strongly telephoto sensors — perspective scaling of distant objects
+will be off. Pass a real ROS-style YAML via `BEV(calib_yaml_path=…)` when
+you have one.
+
+If you don't need perspective at all, skip `BEV` entirely and use the
+pixel-coordinates path shown earlier (`CapAug(...)` with no
+`bev_transform=`) — it cuts and pastes in image space and never touches
+camera geometry.
 
 ### Multi-class usage
 
@@ -237,6 +291,44 @@ transform = CapTorchvision(
 
 image, target = transform(image, target)
 ```
+
+### Reproducibility
+
+Pass an integer seed (or a `numpy.random.Generator`) via `rng=` to make a
+`CapAug` instance deterministic without seeding global state. Two
+instances built with the same seed produce bit-identical images, boxes,
+and masks:
+
+```python
+from cap_augmentation import CapAug
+
+aug = CapAug(SOURCE_IMAGES, rng=42)
+```
+
+If you leave `rng` unset, `CapAug` falls back to the stdlib `random`
+module and `np.random` — seed both for global reproducibility.
+
+### Source image cache
+
+Decoded source PNGs are cached in memory by default (one entry per
+unique source path). For training loops with `n_objects_range=(10, 20)`
+this avoids decoding the same PNG dozens of times per augmented image.
+Pass `cache_size=N` to cap the cache, or `cache_size=0` to disable it
+(useful when source files are rewritten between calls).
+
+### Object opacity / blending
+
+By default, `CapAug` alpha-composites each pasted object using the alpha
+channel of its source PNG: hard-edged masks produce crisp paste boxes,
+anti-aliased masks blend smoothly into the destination.
+
+`blending_coeff` adds an optional "ghost" effect: values in `(0, 1)`
+blend the source colors with the destination colors at the given source
+weight before the alpha composite, so `blending_coeff=0.5` produces a
+translucent paste. The default `0` (no ghost) is the most common
+setting. Source PNGs missing a transparency channel trigger an
+`OpaqueSourceWarning` because the pasted "object" then covers the full
+source rectangle — usually a bug in the source list.
 
 ### Object-level transforms
 

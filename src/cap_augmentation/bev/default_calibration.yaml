@@ -1,3 +1,16 @@
+# Default intrinsic calibration shipped with cap-augmentation.
+#
+# Format: standard ROS camera_info YAML. Used by cap_augmentation.bev.BEV
+# when no `calib_yaml_path` is provided. Only `camera_matrix` is consumed
+# (input images are expected to be rectified already); distortion,
+# rectification, and projection matrices are kept for reference.
+#
+# Source: an AXIS surveillance camera at 1920x1080 (~46° horizontal FOV
+# given the listed focal lengths). The calibration is a placeholder —
+# REPLACE IT for production use by passing your own YAML via
+# `BEV(calib_yaml_path=...)`. Mismatched intrinsics shift the BEV
+# projection and skew the meters→pixels conversion used by CapAug's
+# `bev_transform=` mode.
 image_width: 1920
 image_height: 1080
 camera_name: AXIS_camera

@@ -13,6 +13,23 @@ class CapTorchvision:
     The wrapper expects absolute XYXY boxes. If the target uses
     ``torchvision.tv_tensors.BoundingBoxes``, the original bounding box format
     and canvas size are preserved.
+
+    Target merge rules (intentional, to avoid changing the target schema):
+
+    * ``boxes`` — always appended (the wrapper assumes the target carries
+      detection targets if it has any boxes at all).
+    * ``labels`` — appended if present in the input target. Requires either
+      ``class_idx=...`` on the wrapper or class ids carried in the fifth
+      column of the generated boxes. If labels are present and neither
+      source of class ids exists, a ValueError is raised.
+    * ``masks`` — appended if ``masks`` is already in the target. If the
+      target has boxes but no ``masks`` key, generated instance masks are
+      dropped, even with ``output_masks=True``. This avoids silently
+      growing the target schema mid-pipeline (a downstream transform that
+      doesn't know about masks would crash or silently corrupt them).
+    * ``masks`` (no existing boxes) — created from scratch if
+      ``output_masks=True``.
+    * ``semantic_mask`` — merged with ``torch.maximum`` if present.
     """
 
     def __init__(self, output_masks=True, **kwargs):

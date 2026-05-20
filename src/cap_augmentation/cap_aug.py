@@ -1,20 +1,89 @@
+from __future__ import annotations
+
 __author__ = "RocketFlash: https://github.com/RocketFlash"
 
 import random
 import warnings
+from collections import OrderedDict
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
 
+PathLike = str | Path
+ObjectTransform = Callable[..., Any]
+SeedLike = int | np.integer | np.random.Generator
+
 SUPPORTED_COORD_FORMATS = {"xyxy", "xywh", "yolo"}
+
+
+class OpaqueSourceWarning(UserWarning):
+    """Emitted when a source image lacks a meaningful transparency mask.
+
+    The pasted "object" then covers the entire source rectangle, which is
+    rarely what the user wants. Filter or silence this warning if the
+    behavior is intentional (e.g. pasting fully opaque sprites).
+    """
 
 
 def _as_scalar(value):
     return float(np.asarray(value).reshape(-1)[0])
 
 
-def resize_keep_ar(image, height=500, scale=None):
+class _RNGAdapter:
+    """Single random-source abstraction for CapAug.
+
+    When ``rng`` is None, falls back to the stdlib ``random`` module and
+    the legacy ``np.random`` module — so users who seed via
+    ``random.seed`` and ``np.random.seed`` see no behavior change.
+
+    When ``rng`` is a ``numpy.random.Generator``, every draw (including
+    the ones currently going through stdlib ``random``) is routed through
+    it so a single seed reproduces all augmentation choices.
+    """
+
+    def __init__(self, rng=None):
+        self._rng = rng
+
+    def integers(self, low, high, size=None):  # high exclusive (numpy convention)
+        if self._rng is None:
+            return np.random.randint(low, high, size=size)
+        return self._rng.integers(low, high, size=size)
+
+    def uniform(self, low, high, size=None):
+        if self._rng is None:
+            return np.random.uniform(low, high, size=size)
+        return self._rng.uniform(low, high, size=size)
+
+    def choice(self, a, size, p=None):
+        if self._rng is None:
+            return np.random.choice(a, size=size, p=p)
+        return self._rng.choice(a, size=size, p=p)
+
+    def random(self):
+        if self._rng is None:
+            return random.uniform(0, 1)
+        return float(self._rng.random())
+
+    def randint_inclusive(self, low, high):
+        """random.randint() semantics: both endpoints inclusive."""
+        if self._rng is None:
+            return random.randint(low, high)
+        return int(self._rng.integers(low, high + 1))
+
+
+def resize_keep_ar(
+    image: np.ndarray,
+    height: int = 500,
+    scale: float | None = None,
+) -> np.ndarray:
+    """Resize ``image`` preserving aspect ratio.
+
+    Use ``scale`` to scale by a factor, or ``height`` to set the target
+    height (width is derived from the original aspect ratio).
+    """
     if scale is not None:
         return cv2.resize(image, None, fx=float(scale), fy=float(scale))
 
@@ -40,14 +109,50 @@ def _apply_image_mask_transform(transform, image, mask):
 
 
 def _align_columns(*arrays):
+    """Pad arrays on the right with zeros so they all have max_cols columns.
+
+    Preserves the widest input's dtype on the padded values to avoid silently
+    upcasting integer boxes to float64 (which would change downstream
+    ``.tolist()`` outputs). Padded columns are zero-filled — callers that
+    rely on a specific column meaning past index 4 (class id) must align
+    their arrays themselves.
+    """
     max_cols = max(array.shape[1] for array in arrays)
+    pad_dtype = np.result_type(*(array.dtype for array in arrays))
     aligned = []
     for array in arrays:
         if array.shape[1] < max_cols:
-            pad = np.zeros((len(array), max_cols - array.shape[1]))
-            array = np.c_[array, pad]
+            pad = np.zeros((len(array), max_cols - array.shape[1]), dtype=pad_dtype)
+            array = np.concatenate([array.astype(pad_dtype, copy=False), pad], axis=1)
         aligned.append(array)
     return aligned
+
+
+def _max_box_iou(box, prior_boxes):
+    """Largest IoU between ``box`` and any of ``prior_boxes``.
+
+    ``box`` is a 4-tuple/list ``[x1, y1, x2, y2]``; ``prior_boxes`` is a
+    list of such tuples. Returns 0.0 when ``prior_boxes`` is empty so
+    callers can compare unconditionally.
+    """
+    if not prior_boxes:
+        return 0.0
+    box = np.asarray(box, dtype=float)
+    priors = np.asarray(prior_boxes, dtype=float)[:, :4]
+    ix1 = np.maximum(box[0], priors[:, 0])
+    iy1 = np.maximum(box[1], priors[:, 1])
+    ix2 = np.minimum(box[2], priors[:, 2])
+    iy2 = np.minimum(box[3], priors[:, 3])
+    iw = np.clip(ix2 - ix1, 0, None)
+    ih = np.clip(iy2 - iy1, 0, None)
+    inter = iw * ih
+    box_area = max(0.0, (box[2] - box[0]) * (box[3] - box[1]))
+    prior_areas = np.maximum(
+        0.0, (priors[:, 2] - priors[:, 0]) * (priors[:, 3] - priors[:, 1])
+    )
+    union = box_area + prior_areas - inter
+    iou = np.where(union > 0, inter / union, 0.0)
+    return float(iou.max())
 
 
 def _with_class_column(coords, class_idx):
@@ -72,7 +177,12 @@ class CapAugMulticlass:
     class_idxs - class indexes
     """
 
-    def __init__(self, cap_augs, probabilities, class_idxs):
+    def __init__(
+        self,
+        cap_augs: Sequence[CapAug],
+        probabilities: Sequence[float],
+        class_idxs: Sequence[int],
+    ) -> None:
         self.cap_augs = cap_augs
         self.probabilities = probabilities
         self.class_idxs = class_idxs
@@ -84,17 +194,21 @@ class CapAugMulticlass:
                 "cap_augs, probabilities, and class_idxs must have equal length"
             )
 
-    def __call__(self, image):
+    def __call__(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[np.ndarray]]:
         return self.generate_objects(image)
 
-    def generate_objects(self, image):
+    def generate_objects(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[np.ndarray]]:
         result_image = image.copy()
         total_result_coords = []
         total_instance_masks = []
         result_sem_mask = np.zeros(image.shape[:2], dtype=np.uint8)
 
         for cap_aug, p, class_idx in zip(
-            self.cap_augs, self.probabilities, self.class_idxs
+            self.cap_augs, self.probabilities, self.class_idxs, strict=True
         ):
             if float(p) >= float(np.random.uniform(0, 1)):
                 result_image, result_coords, semantic_mask, instance_mask = cap_aug(
@@ -136,7 +250,13 @@ class CapAug:
     random_v_flip - source image random vertical flip
     histogram_matching - apply histogram matching
     hm_offset - histogram matching offset
-    blending_coeff - coefficient of image blending inside the pasted mask
+    blending_coeff - "ghost" factor inside the pasted mask region. 0 (the
+                     default) means the pasted object replaces the
+                     destination using its alpha mask. Values in (0, 1) blend
+                     the source pixels with the destination pixels at the
+                     given source weight before alpha-compositing, so 0.5
+                     produces a translucent ghost effect. Soft-alpha edges
+                     are always honored regardless of this value.
     image_format - color image format: {bgr, rgb}
     coords_format - output coordinates format: {xyxy, xywh, yolo}
     normalized_range - range in normalized image coordinates [0, 1]
@@ -146,34 +266,54 @@ class CapAug:
                         Must accept image=..., mask=... and return either
                         {'image': image, 'mask': mask} or (image, mask).
     albu_transforms - deprecated alias for object_transforms
+    cache_size - number of decoded source images to keep in memory. None (the
+                 default) caches every source. Set to 0 to disable caching
+                 and re-read from disk on every paste. Cached images are
+                 returned by reference; do not mutate them in place.
+    rng - optional source of randomness. Pass an integer to seed a fresh
+          numpy Generator (recommended), or pass a ``numpy.random.Generator``
+          directly. With ``rng=None`` (default) CapAug falls back to the
+          stdlib ``random`` module and ``np.random`` — backward compatible
+          for users who seed globally with ``random.seed`` / ``np.random.seed``.
+    max_overlap - if set, a value in [0, 1]. After each candidate paste,
+          compute IoU between the new tight bbox and all already-accepted
+          tight bboxes. If the largest IoU exceeds ``max_overlap`` the
+          candidate is rolled back and skipped, so the final result may
+          contain fewer objects than ``n_objects_range`` requested. Useful
+          for dense placement where overlapping pastes would corrupt
+          ground-truth boxes. Default ``None`` disables collision checking
+          (original behavior — overlapping pastes allowed).
     """
 
     def __init__(
         self,
-        source_images,
-        bev_transform=None,
-        probability_map=None,
-        mean_h_norm=None,
-        n_objects_range=(1, 6),
-        h_range=None,
-        s_range=(0.5, 1.5),
-        x_range=(200, 500),
-        y_range=(100, 300),
-        z_range=(0, 0),
-        objects_idxs=None,
-        random_h_flip=True,
-        random_v_flip=False,
-        histogram_matching=False,
-        hm_offset=200,
-        image_format="bgr",
-        coords_format="xyxy",
-        normilized_range=False,
-        blending_coeff=0,
-        class_idx=None,
-        albu_transforms=None,
-        object_transforms=None,
-        normalized_range=None,
-    ):
+        source_images: Sequence[PathLike],
+        bev_transform: Any | None = None,
+        probability_map: np.ndarray | None = None,
+        mean_h_norm: float | None = None,
+        n_objects_range: tuple[int, int] = (1, 6),
+        h_range: tuple[float, float] | None = None,
+        s_range: tuple[float, float] = (0.5, 1.5),
+        x_range: tuple[float, float] = (200, 500),
+        y_range: tuple[float, float] = (100, 300),
+        z_range: tuple[float, float] = (0, 0),
+        objects_idxs: Iterable[int] | None = None,
+        random_h_flip: bool = True,
+        random_v_flip: bool = False,
+        histogram_matching: bool = False,
+        hm_offset: int = 200,
+        image_format: str = "bgr",
+        coords_format: str = "xyxy",
+        normilized_range: bool = False,
+        blending_coeff: float = 0,
+        class_idx: int | None = None,
+        albu_transforms: ObjectTransform | None = None,
+        object_transforms: ObjectTransform | None = None,
+        normalized_range: bool | None = None,
+        cache_size: int | None = None,
+        rng: SeedLike | None = None,
+        max_overlap: float | None = None,
+    ) -> None:
         if coords_format not in SUPPORTED_COORD_FORMATS:
             raise ValueError(
                 f"coords_format must be one of {sorted(SUPPORTED_COORD_FORMATS)}"
@@ -212,6 +352,12 @@ class CapAug:
         self.normalized_range = bool(normilized_range)
         self.normilized_range = self.normalized_range
         self.probability_map = probability_map
+        # Lazily filled on first call; reused across paste batches. Stores
+        # (flat_normalised_probs, height, width). probability_map is
+        # captured by reference, so mutating it in place after constructing
+        # CapAug will NOT invalidate this cache — replace the array, don't
+        # mutate it.
+        self._normalized_probability_map: tuple[np.ndarray, int, int] | None = None
         self.mean_h_norm = mean_h_norm
         self.histogram_matching = histogram_matching
         self.hm_offset = hm_offset
@@ -226,24 +372,46 @@ class CapAug:
         )
         self.albu_transforms = self.object_transforms
 
-    def __call__(self, image):
+        if cache_size is not None and int(cache_size) < 0:
+            raise ValueError("cache_size must be None, 0, or a positive integer")
+        self.cache_size = None if cache_size is None else int(cache_size)
+        self._image_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+        self._warned_opaque: dict[str, bool] = {}
+
+        if rng is None:
+            self._rng = _RNGAdapter(None)
+        elif isinstance(rng, (int, np.integer)):
+            self._rng = _RNGAdapter(np.random.default_rng(int(rng)))
+        elif isinstance(rng, np.random.Generator):
+            self._rng = _RNGAdapter(rng)
+        else:
+            raise TypeError(
+                "rng must be None, an int seed, or a numpy.random.Generator"
+            )
+
+        if max_overlap is not None:
+            max_overlap = float(max_overlap)
+            if not 0.0 <= max_overlap <= 1.0:
+                raise ValueError("max_overlap must be in [0, 1] or None")
+        self.max_overlap = max_overlap
+
+    def __call__(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         return self.generate_objects(image)
 
-    def generate_objects(self, image):
-        n_objects = random.randint(*self.n_objects_range)
+    def generate_objects(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        n_objects = self._rng.randint_inclusive(*self.n_objects_range)
         heights = None
         scales = None
+        self._validate_pixel_mode_ranges()
 
         if self.probability_map is not None:
-            probability_map = np.asarray(self.probability_map, dtype=float)
-            p_h, p_w = probability_map.shape
-            prob_map_1d = probability_map.reshape(-1)
-            prob_sum = prob_map_1d.sum()
-            if prob_sum <= 0:
-                raise ValueError("probability_map must contain a positive sum")
-            prob_map_1d = prob_map_1d / prob_sum
-            select_indexes = np.random.choice(
-                np.arange(prob_map_1d.size), n_objects, p=prob_map_1d
+            prob_map_1d, p_h, p_w = self._get_normalized_probability_map()
+            select_indexes = self._rng.choice(
+                np.arange(prob_map_1d.size), size=n_objects, p=prob_map_1d
             )
             points = np.array(
                 [
@@ -254,54 +422,107 @@ class CapAug:
             )
 
             if self.mean_h_norm is not None:
-                heights = np.random.uniform(
+                heights = self._rng.uniform(
                     low=self.mean_h_norm * 0.98,
                     high=self.mean_h_norm * 1.02,
                     size=n_objects,
                 )
             elif self.h_range is not None:
-                heights = np.random.uniform(
+                heights = self._rng.uniform(
                     low=self.h_range[0], high=self.h_range[1], size=n_objects
                 )
         elif self.bev_transform is not None:
-            points = np.random.uniform(
+            points = self._rng.uniform(
                 low=[self.x_range[0], self.y_range[0], self.z_range[0]],
                 high=[self.x_range[1], self.y_range[1], self.z_range[1]],
                 size=(n_objects, 3),
             )
             if self.h_range is not None:
-                heights = np.random.uniform(
+                heights = self._rng.uniform(
                     low=self.h_range[0], high=self.h_range[1], size=n_objects
                 )
             else:
-                heights = np.random.uniform(low=0.5, high=1.5, size=n_objects)
+                heights = self._rng.uniform(low=0.5, high=1.5, size=n_objects)
         elif self.normalized_range:
-            points = np.random.uniform(
+            points = self._rng.uniform(
                 low=[self.x_range[0], self.y_range[0]],
                 high=[self.x_range[1], self.y_range[1]],
                 size=(n_objects, 2),
             )
             if self.h_range is not None:
-                heights = np.random.uniform(
+                heights = self._rng.uniform(
                     low=self.h_range[0], high=self.h_range[1], size=n_objects
                 )
         else:
-            points = np.random.randint(
+            points = self._rng.integers(
                 low=[self.x_range[0], self.y_range[0]],
                 high=[self.x_range[1], self.y_range[1]],
                 size=(n_objects, 2),
             )
             if self.h_range is not None:
-                heights = np.random.randint(
+                heights = self._rng.integers(
                     low=self.h_range[0], high=self.h_range[1], size=n_objects
                 )
 
         if heights is None:
-            scales = np.random.uniform(
+            scales = self._rng.uniform(
                 low=self.s_range[0], high=self.s_range[1], size=n_objects
             )
 
         return self.generate_objects_coord(image, points, heights, scales)
+
+    def _get_normalized_probability_map(self) -> tuple[np.ndarray, int, int]:
+        """Return (flat-normalised probabilities, height, width).
+
+        Cached on first call: the input map's sum and divide are O(p_h*p_w),
+        not free on a 1000x1000 distribution sampled per training step.
+        """
+        if self._normalized_probability_map is not None:
+            return self._normalized_probability_map
+
+        probability_map = np.asarray(self.probability_map, dtype=float)
+        if probability_map.ndim != 2:
+            raise ValueError(
+                f"probability_map must be 2D; got shape {probability_map.shape}"
+            )
+        p_h, p_w = probability_map.shape
+        prob_sum = probability_map.sum()
+        if prob_sum <= 0:
+            raise ValueError("probability_map must contain a positive sum")
+        prob_map_1d = (probability_map.reshape(-1) / prob_sum).astype(float)
+        self._normalized_probability_map = (prob_map_1d, p_h, p_w)
+        return self._normalized_probability_map
+
+    def _validate_pixel_mode_ranges(self):
+        """In pixel mode, ranges feed np.random.randint, which silently
+        truncates floats. A user who passes (0.0, 1.0) intending normalized
+        coordinates would get all-zero placements with no feedback. Surface
+        this as an explicit error.
+        """
+        if (
+            self.bev_transform is not None
+            or self.probability_map is not None
+            or self.normalized_range
+        ):
+            return
+
+        def _is_int_range(values):
+            return all(float(v).is_integer() for v in values)
+
+        offending = []
+        for name in ("x_range", "y_range"):
+            if not _is_int_range(getattr(self, name)):
+                offending.append(name)
+        if self.h_range is not None and not _is_int_range(self.h_range):
+            offending.append("h_range")
+
+        if offending:
+            raise ValueError(
+                f"Pixel-mode ranges must be integers; got non-integer "
+                f"values in: {', '.join(offending)}. Pass integer pixel "
+                "coordinates, or set normalized_range=True (values in [0, 1]) "
+                "or bev_transform=BEV(...) (values in meters)."
+            )
 
     def generate_objects_coord(self, image, points, heights, scales):
         """
@@ -314,7 +535,7 @@ class CapAug:
         if self.objects_idxs is None:
             objects_idxs = np.array(
                 [
-                    random.randint(0, len(self.source_images) - 1)
+                    self._rng.randint_inclusive(0, len(self.source_images) - 1)
                     for _ in range(n_objects)
                 ]
             )
@@ -384,6 +605,28 @@ class CapAug:
             if self.histogram_matching:
                 image_src = self._match_histogram(image, image_src, x_coord, y_coord)
 
+            # Conservative snapshot of the ROI that paste_object MIGHT touch.
+            # The actual modified region is a subset (alpha trimming +
+            # optional object_transforms can only shrink it), but
+            # snapshotting a superset is enough to roll back on collision.
+            roi_snapshot = None
+            if self.max_overlap is not None and coords_all:
+                src_h0, src_w0 = image_src.shape[:2]
+                x_off0 = int(round(x_coord - src_w0 / 2))
+                y_off0 = int(round(y_coord - src_h0))
+                y1c = max(y_off0, 0)
+                y2c = min(y_off0 + src_h0, dst_h)
+                x1c = max(x_off0, 0)
+                x2c = min(x_off0 + src_w0, dst_w)
+                if x1c < x2c and y1c < y2c:
+                    roi_snapshot = (
+                        x1c,
+                        y1c,
+                        x2c,
+                        y2c,
+                        image_dst[y1c:y2c, x1c:x2c].copy(),
+                    )
+
             image_dst, coords, mask = self.paste_object(
                 image_dst,
                 image_src,
@@ -392,6 +635,17 @@ class CapAug:
                 self.random_h_flip,
                 self.random_v_flip,
             )
+
+            if (
+                coords
+                and self.max_overlap is not None
+                and _max_box_iou(coords, coords_all) > self.max_overlap
+            ):
+                if roi_snapshot is not None:
+                    x1c, y1c, x2c, y2c, snap = roi_snapshot
+                    image_dst[y1c:y2c, x1c:x2c] = snap
+                coords = []
+
             if coords:
                 coords_all.append(coords)
                 x1, y1, x2, y2 = coords
@@ -464,18 +718,30 @@ class CapAug:
             image_src[:, :, :3], image_ref, channel_axis=-1
         )
         matched = np.clip(matched, 0, 255).astype(image_src.dtype)
-        image_src = cv2.bitwise_and(matched, matched, mask=mask_src)
-        image_src = cv2.cvtColor(image_src, cv2.COLOR_BGR2BGRA)
-        image_src[:, :, 3] = mask_src
-        return image_src
+        # Reassemble RGBA: matched colour channels carry the histogram-
+        # matched values, alpha plane carries the original mask. The earlier
+        # cv2.bitwise_and+cvtColor dance produced the same result via a
+        # misleading COLOR_BGR2BGRA constant (which only appends an alpha
+        # plane regardless of channel order).
+        result = np.empty_like(image_src)
+        result[:, :, :3] = matched
+        result[:, :, 3] = mask_src
+        return result
 
     def select_image(self, source_images, object_idx):
         source_image_path = Path(source_images[object_idx])
+        cache_key = (str(source_image_path), self.image_format)
+        if self.cache_size != 0 and cache_key in self._image_cache:
+            self._image_cache.move_to_end(cache_key)
+            return self._image_cache[cache_key]
+
         image_src = cv2.imread(str(source_image_path), cv2.IMREAD_UNCHANGED)
         if image_src is None:
             raise FileNotFoundError(f"Could not read source image: {source_image_path}")
 
+        no_alpha_reason = None
         if image_src.ndim == 2:
+            no_alpha_reason = "grayscale"
             code = (
                 cv2.COLOR_GRAY2RGBA
                 if self.image_format == "rgb"
@@ -483,6 +749,7 @@ class CapAug:
             )
             image_src = cv2.cvtColor(image_src, code)
         elif image_src.shape[2] == 3:
+            no_alpha_reason = "no alpha channel"
             code = (
                 cv2.COLOR_BGR2RGBA if self.image_format == "rgb" else cv2.COLOR_BGR2BGRA
             )
@@ -491,6 +758,28 @@ class CapAug:
             image_src = cv2.cvtColor(image_src, cv2.COLOR_BGRA2RGBA)
         elif image_src.shape[2] != 4:
             raise ValueError(f"Unsupported image channel count: {image_src.shape[2]}")
+
+        if no_alpha_reason is None and image_src[:, :, 3].min() == 255:
+            no_alpha_reason = "fully opaque"
+
+        if no_alpha_reason is not None and not self._warned_opaque.get(
+            str(source_image_path)
+        ):
+            warnings.warn(
+                f"Source {source_image_path} has {no_alpha_reason}; pasting "
+                "the full image rectangle as an object. CapAug expects PNGs "
+                "with a transparency mask defining the visible object.",
+                OpaqueSourceWarning,
+                stacklevel=2,
+            )
+            self._warned_opaque[str(source_image_path)] = True
+
+        if self.cache_size != 0:
+            image_src.setflags(write=False)
+            self._image_cache[cache_key] = image_src
+            if self.cache_size is not None:
+                while len(self._image_cache) > self.cache_size:
+                    self._image_cache.popitem(last=False)
 
         return image_src
 
@@ -503,9 +792,9 @@ class CapAug:
         random_h_flip=True,
         random_v_flip=False,
     ):
-        if random_h_flip and random.uniform(0, 1) > 0.5:
+        if random_h_flip and self._rng.random() > 0.5:
             image_src = cv2.flip(image_src, 1)
-        if random_v_flip and random.uniform(0, 1) > 0.5:
+        if random_v_flip and self._rng.random() > 0.5:
             image_src = cv2.flip(image_src, 0)
 
         mask_src = image_src[:, :, 3]
@@ -523,6 +812,18 @@ class CapAug:
                     "object_transforms must return image and mask with the same "
                     f"height/width; got image {rgb_img.shape[:2]} and mask "
                     f"{mask_src.shape[:2]}"
+                )
+            # CapAug splits image and alpha BEFORE the transform: rgb_img is
+            # 3-channel and mask_src holds alpha. If the transform returns a
+            # 4-channel image (e.g. plugging an Albumentations pipeline that
+            # carries alpha through), the composite below would broadcast a
+            # (H, W) alpha against a (H, W, 4) src and produce silently wrong
+            # pixels. Surface the contract clearly.
+            if rgb_img.ndim != 3 or rgb_img.shape[2] != 3:
+                raise ValueError(
+                    "object_transforms must return a 3-channel image (alpha "
+                    "is handed in and out via the separate mask argument); "
+                    f"got shape {rgb_img.shape}"
                 )
 
         src_h, src_w = mask_src.shape[:2]
@@ -542,18 +843,23 @@ class CapAug:
         dst_roi = image_dst[y1:y2, x1:x2]
         mask_roi = mask_src[y1_m:y2_m, x1_m:x2_m]
 
-        if self.blending_coeff > 0:
-            beta = 1.0 - self.blending_coeff
-            blended = cv2.addWeighted(src_roi, self.blending_coeff, dst_roi, beta, 0.0)
-            out_img = dst_roi.copy()
-            out_img[mask_roi > 0] = blended[mask_roi > 0]
-        else:
-            mask_inv = cv2.bitwise_not(mask_roi)
-            img1_bg = cv2.bitwise_and(dst_roi, dst_roi, mask=mask_inv)
-            img2_fg = cv2.bitwise_and(src_roi, src_roi, mask=mask_roi)
-            out_img = cv2.add(img1_bg, img2_fg)
+        # Soft-alpha composite. For binary masks (alpha ∈ {0, 255}), this
+        # produces the same pixels as the old bitwise path; for masks with
+        # intermediate alpha values (anti-aliased cutouts), edges blend
+        # instead of being hard-thresholded.
+        alpha = (mask_roi.astype(np.float32) / 255.0)[..., None]
+        src_f = src_roi.astype(np.float32)
+        dst_f = dst_roi.astype(np.float32)
 
-        image_dst[y1:y2, x1:x2] = out_img
+        if self.blending_coeff > 0:
+            # Ghost effect: inside the mask region, blend src with dst at
+            # `blending_coeff`. Soft alpha still controls the boundary.
+            src_f = src_f * float(self.blending_coeff) + dst_f * (
+                1.0 - float(self.blending_coeff)
+            )
+
+        out_img = src_f * alpha + dst_f * (1.0 - alpha)
+        image_dst[y1:y2, x1:x2] = np.clip(out_img, 0, 255).astype(np.uint8)
 
         # Tighten the returned bbox to the visible (alpha>0) pixels of the
         # pasted ROI translated into destination coords, so PNGs with

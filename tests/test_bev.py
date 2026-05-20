@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from cap_augmentation.bev import (
     BEV,
@@ -8,6 +9,7 @@ from cap_augmentation.bev import (
     get_RY,
     get_RZ,
     get_T,
+    intrinsics_from_image_shape,
 )
 
 
@@ -35,6 +37,39 @@ def test_meter_pixel_round_trip_is_stable_for_ground_points():
     round_trip = bev.pixels_to_meters(pixels)
 
     np.testing.assert_allclose(round_trip, points_meters[:, :2], atol=1e-6)
+
+
+def test_intrinsics_from_image_shape_centers_and_scales():
+    calib = intrinsics_from_image_shape(720, 1280)
+    K = calib["camera_matrix"]
+    assert K.shape == (3, 3)
+    # principal point at image center
+    assert K[0, 2] == pytest.approx(640.0)
+    assert K[1, 2] == pytest.approx(360.0)
+    # fx = fy = max(W, H)
+    assert K[0, 0] == pytest.approx(1280.0)
+    assert K[1, 1] == pytest.approx(1280.0)
+    # zero skew, homogeneous bottom row
+    assert K[0, 1] == 0.0
+    np.testing.assert_allclose(K[2], [0, 0, 1])
+
+
+def test_bev_from_image_shape_builds_transform_without_yaml():
+    image = np.zeros((720, 1280, 3), dtype=np.uint8)
+
+    bev = BEV.from_image_shape(image.shape)
+    transformed = bev(image)
+
+    # Principal point matches the input image, not the packaged AXIS YAML.
+    K = bev.calib_matrices["camera_matrix"]
+    assert K[0, 2] == pytest.approx(640.0)
+    assert K[1, 2] == pytest.approx(360.0)
+    assert transformed.shape == (bev.output_h, bev.output_w, 3)
+
+
+def test_bev_rejects_both_calib_yaml_and_calib_matrices():
+    with pytest.raises(ValueError, match="not both"):
+        BEV(calib_yaml_path="ignored.yaml", calib_matrices={"camera_matrix": np.eye(3)})
 
 
 def test_calculate_bev_h_respects_pix_per_meter_argument():

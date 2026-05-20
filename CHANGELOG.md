@@ -1,5 +1,138 @@
 # Changelog
 
+<!--
+Header format: `## X.Y.Z` (plain version, no brackets or dates). The
+publish workflow extracts release notes by matching `## ` + the tag
+version with the leading `v` stripped. Keep-a-Changelog style headers
+like `## [0.3.0] - 2026-05-17` will silently produce empty notes.
+-->
+
+## 0.4.1
+
+### New features
+- `max_overlap` parameter on `CapAug`: skip pastes whose tight bbox
+  exceeds the given IoU with any already-accepted bbox. Useful for
+  dense placement where overlapping pastes would corrupt detection
+  ground truth. Default `None` keeps the prior unrestricted behavior.
+
+### Tests & CI
+- Promoted Albumentations and Torchvision `DeprecationWarning` and
+  `PendingDeprecationWarning` to errors in `pyproject.toml`
+  `filterwarnings`. Future upstream deprecations will fail the suite
+  immediately rather than slipping through.
+
+### Docs
+- Corrected the 0.4.0 `CapAlbumentations.always_apply` note: the
+  field was removed by Albumentations **2.0.0**, not a hypothetical
+  3.x. We had already required `>=2.0.8`, so the wrapper carried the
+  alias longer than the underlying library supported it.
+
+## 0.4.0
+
+### Breaking changes
+- `CapAlbumentations.always_apply` was removed. The kwarg had been a
+  deprecated alias for `p=1.0` since 0.2.x; Albumentations itself
+  removed the field in **2.0.0** (we already require `>=2.0.8`), so
+  the wrapper was kept around longer than the underlying library
+  supported it. Passing `always_apply=...` now raises a `TypeError`
+  with a migration hint pointing at `p=1.0`.
+
+### Bug fixes
+- `object_transforms` callables that return a 4-channel image now raise
+  a clear `ValueError` instead of silently broadcasting a (H, W) alpha
+  against a (H, W, 4) source in the composite. The contract (alpha
+  travels via the separate `mask` argument, not the image one) is now
+  explicit in the error message.
+
+### Performance
+- `probability_map` is now normalised once and cached on the `CapAug`
+  instance instead of being re-summed and re-divided on every call. For
+  a 1000×1000 map that's ~1 MB of per-call busywork avoided in tight
+  training loops. The cached value is invalidated only by constructing
+  a new `CapAug` — replace the array, don't mutate it in place.
+
+### Validation
+- `probability_map` inputs with `ndim != 2` now raise a clear
+  `ValueError` instead of failing downstream in `np.random.choice` with
+  an opaque shape mismatch.
+
+## 0.3.1
+
+### Tests & CI
+- Added end-to-end coverage for `image_format='rgb'`, the `s_range`
+  scale path (when `h_range` is None), and `CapAugMulticlass` composed
+  with `bev_transform` — three paths the audit flagged as untested.
+- Added `tests/test_notebooks.py`: parses each `examples/notebooks/*.ipynb`,
+  compiles every code cell (catches API-rename drift), and asserts cell
+  outputs are stripped per repo convention.
+- CI now runs on macOS-latest and Windows-latest (Python 3.12) in
+  addition to the Linux 3.10 / 3.11 / 3.12 / 3.13 matrix.
+- Coverage reporting via `pytest-cov` on the Linux/3.12 job, with the
+  `coverage.xml` artifact uploaded for inspection.
+
+### Packaging
+- Split `[all]` into runtime extras and a new `[dev]` extra. Previously
+  `pip install "cap-augmentation[all]"` leaked black/ruff/build into
+  user environments; `[all]` is now runtime-only, and contributors
+  install `pip install -e ".[test,dev]"` to get the CI toolchain.
+- `[test]` no longer carries black/ruff (moved to `[dev]`).
+
+### Docs
+- Documented the default BEV calibration YAML (source camera + FOV +
+  "placeholder, replace for production") inline in the YAML and in the
+  README's BEV section.
+- CONTRIBUTING.md gained a Releasing section and a coverage-reporting
+  command; pinned the CHANGELOG header format so `publish.yml`'s
+  release-notes extractor doesn't silently produce empty notes.
+
+## 0.3.0
+
+### Breaking changes
+- Dropped Python 3.9 support; minimum is now Python 3.10 (3.9 reached EOL
+  in October 2025). CI matrix is now 3.10 / 3.11 / 3.12 / 3.13.
+- The default soft-alpha composite now honors intermediate alpha values
+  on source PNGs. For sources with anti-aliased edges (most real
+  cutouts), pasted objects blend smoothly into the destination instead
+  of being hard-thresholded by the previous bitwise composite. Outputs
+  are bit-identical for sources with binary alpha (alpha ∈ {0, 255}),
+  which is what `dataset_tools/cityscapes` produces.
+
+### New features
+- `CapAug(..., rng=42)` accepts an int seed or `numpy.random.Generator`
+  for local, reproducible randomness — no more seeding both `random.seed`
+  and `np.random.seed` globally. `rng=None` (default) preserves the
+  legacy global-state behavior.
+- `CapAug(..., cache_size=...)` caches decoded source PNGs. Default is
+  unbounded; set `0` to disable, or `N` for an LRU cap. Eliminates the
+  per-paste `cv2.imread` cost that dominated training-loop wall time.
+- Public type annotations on `CapAug`, `CapAugMulticlass`,
+  `resize_keep_ar`, `ImageMaskTransform`, and `__version__`. Ships
+  `py.typed` so mypy/pyright honor them.
+- New `OpaqueSourceWarning` (exported) fires once per source path when
+  CapAug detects a grayscale, 3-channel, or fully-opaque source — these
+  silently paste the full rectangle as an "object", which is almost
+  always a user error.
+
+### Bug fixes
+- `_align_columns` preserved float padding even when both inputs were
+  integer, silently upcasting box arrays. Padding now uses
+  `np.result_type(*inputs)` so homogeneous integer inputs stay integer.
+- Pixel-mode now rejects non-integer ranges with an explicit error
+  pointing at `normalized_range=True` or `bev_transform=BEV(...)`.
+  Previously `np.random.randint` silently truncated floats — passing
+  `(0.0, 1.0)` produced all-zero placements with no feedback.
+- `_match_histogram` no longer routes through a misleading
+  `cv2.COLOR_BGR2BGRA` constant + redundant `bitwise_and`; the RGBA
+  array is reassembled directly from numpy slices.
+
+### Docs
+- README gained sections on reproducibility (`rng=`), the source-image
+  cache, `blending_coeff` semantics (now a "ghost factor" over soft
+  alpha), and the `OpaqueSourceWarning` rationale.
+- `CapTorchvision` docstring now spells out the target merge rules
+  (when boxes / labels / masks / semantic_mask are appended vs. dropped
+  vs. created from scratch). Locked with a regression test.
+
 ## 0.2.3
 
 Documentation-only release.

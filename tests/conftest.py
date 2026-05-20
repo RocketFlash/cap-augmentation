@@ -1,14 +1,29 @@
 import random
+import warnings
 
 import cv2
 import numpy as np
 import pytest
+
+from cap_augmentation import OpaqueSourceWarning
 
 
 @pytest.fixture(autouse=True)
 def deterministic_random():
     random.seed(0)
     np.random.seed(0)
+
+
+@pytest.fixture(autouse=True)
+def _silence_opaque_source_warnings():
+    """Most fixtures intentionally use fully opaque sources to focus on the
+    paste mechanics. Suppress the OpaqueSourceWarning by default so it
+    doesn't drown logs; tests that exercise the warning opt in via
+    pytest.warns().
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", OpaqueSourceWarning)
+        yield
 
 
 @pytest.fixture
