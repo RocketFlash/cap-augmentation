@@ -7,6 +7,36 @@ version with the leading `v` stripped. Keep-a-Changelog style headers
 like `## [0.3.0] - 2026-05-17` will silently produce empty notes.
 -->
 
+## 0.5.0
+
+### New features
+- `seamless_blend(foreground_path, background_path, center_x, center_y,
+  output_path, mode="normal")`: Poisson image compositing via
+  `cv2.seamlessClone`. Reads an RGBA foreground, reuses its alpha as the
+  clone mask, auto-scales the foreground to fit the destination, and
+  supports `"normal"` / `"mixed"` / `"monochrome"` clone modes. Exported
+  from the top-level package. Opt-in — `CapAug` continues to default to
+  plain alpha compositing.
+- `BEV.from_image_shape(shape, ...)`: construct a BEV transform without a
+  calibration YAML. Synthesizes intrinsics from image dimensions
+  (`fx = fy = max(W, H)`, principal point at center). Paired with the new
+  public helper `intrinsics_from_image_shape(height, width)`. `BEV()` with
+  no arguments still loads the packaged AXIS default — unchanged.
+- `BEV(calib_matrices=...)`: pass a pre-built `{"camera_matrix": K}` dict
+  to bypass YAML loading.
+
+### Tooling
+- `dataset_tools/cityscapes/download_dataset.py`: stdlib-only Cityscapes
+  downloader using `CITYSCAPES_USERNAME` / `CITYSCAPES_PASSWORD` env vars.
+  `run.sh` gains a `--download` step and auto-sources a gitignored
+  repo-root `.env`; `.env.example` ships as a template. Repo-only tooling,
+  not part of the installed wheel.
+
+### Docs
+- README: `seamless_blend` listed in the Public API; new "Without your own
+  calibration" section covering `BEV.from_image_shape` and the
+  no-perspective `bev_transform=None` fallback.
+
 ## 0.4.1
 
 ### New features
